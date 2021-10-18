@@ -184,7 +184,7 @@ def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
     #check for NaNs
     idx = np.isfinite(statistic)
     
-    f = interp1d(bin_edges[idx], statistic[idx])
+    f = interp1d(bin_edges[idx], statistic[idx], fill_value="extrapolate")
     
     x_new = np.linspace(min(bin_edges), max(bin_edges), 50)
     y_new = f(x_new) + tau_tolerance
@@ -205,6 +205,16 @@ def compute_tauThreshold_envelope(sg_tau0, tau_diff, nbins):
     tau_func = fit_tau_envelope(bin_edges, statistic, tau_tolerance)
     return tau_func
     
-    
-    
-    
+def compute_FF(tb, sg, tau_func, tau_tolerance, psd, nsignal, detect, delta_f, f_min):
+    FF_array = []
+    recovered_tau = []
+    for n in range(nsignal):
+        tau0_threshold = tau_func(sg[n].tau0) + tau_tolerance
+        template_indices = check_tau0_for_template_generation(tb, sg[n],tau0_threshold)
+        if (n%100==0):
+            print(n, len(tb), len(template_indices))
+        
+        match = compute_match(sg[n], tb, psd, template_indices, delta_f, f_min, detect)
+        FF_array.append(max(match))
+        
+    return FF_array
