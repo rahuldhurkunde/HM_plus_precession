@@ -59,24 +59,27 @@ def write_injections_HDF(sg, filename):
             f.create_dataset("dec", data=dec)
     f.close()
     
-def read_injections_HDF(filename, nsignal):
+def read_injections_HDF(filename, nsignal, f_min):
     hf = h5py.File(filename, 'r')
     sg = []
     for i in range(nsignal):
-        temp_obj = sg_params(hf['m1'][i], 
-                            hf['m2'][i], 
-                            hf['s1z'][i], 
-                            hf['s2z'][i], 
-                            hf['tau0'][i], 
-                            hf['tau3'][i], 
-                            hf['dist'][i], 
-                            hf['inc'][i], 
+        m1 = hf['mass1'][i]
+        m2 = hf['mass2'][i]
+        tau0 = conversions.pycbc.conversions.tau0_from_mass1_mass2(m1, m2, f_min)
+        tau3 = conversions.pycbc.conversions.tau3_from_mass1_mass2(m1, m2, f_min)
+        temp_obj = sg_params(m1, 
+                            m2, 
+                            hf['spin1z'][i], 
+                            hf['spin2z'][i], 
+                            tau0, 
+                            tau3, 
+                            hf['distance'][i], 
+                            hf['inclination'][i], 
                             hf['polarization'][i], 
-                            hf['right_asc'][i], 
+                            hf['ra'][i], 
                             hf['dec'][i])
         sg.append(temp_obj)
     return sg
-
 
 def generate_injections(delta_f, delta_t, f_min):
     tb = func.read_tb("banks/vanilla_BBHbank", f_min)
@@ -84,5 +87,4 @@ def generate_injections(delta_f, delta_t, f_min):
     sg = func.random_params_from_tb(tb, f_min, nsignal)
     filename = 'random_injections.hdf5'
     #write_injections_HDF(sg, filename)
-
 

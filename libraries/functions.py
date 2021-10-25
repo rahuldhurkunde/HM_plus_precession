@@ -72,7 +72,15 @@ def mass_samples_from_m1_m2(m1_min, m1_max, m2_min, m2_max, nsignal):
     m2_dist = distributions.Uniform(mass2=(m2_min, m2_max))
     m2 = m2_dist.rvs(size = nsignal)
     return m1, m2
-    
+
+def get_mass_ranges_from_TB(tb):
+    m1_min = min(x.m1 for x in tb)
+    m1_max = max(x.m1 for x in tb)
+    m2_min = min(x.m2 for x in tb)
+    m2_max = max(x.m2 for x in tb)
+    print(m1_min, m1_max, m2_min, m2_max)
+    return m1_min, m1_max, m2_min, m2_max
+     
 def random_params_from_tb(tb, f_min, nsignal):
     mc_min = min(x.mc for x in tb)
     mc_max = max(x.mc for x in tb)
@@ -82,7 +90,7 @@ def random_params_from_tb(tb, f_min, nsignal):
     m1_max = max(x.m1 for x in tb)
     m2_min = min(x.m2 for x in tb)
     m2_max = max(x.m2 for x in tb)
-    print( mc_min, mc_max, q_min, q_max)
+    print( m1_min, m1_max, m2_min, m2_max)
     
     m1, m2 = mass_samples_from_m1_m2(m1_min, m1_max, m2_min, m2_max, nsignal)
     #m1, m2 = mass_samples_from_mc_q(mc_min, mc_max, q_min, q_max, nsignal)
@@ -189,8 +197,8 @@ def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
     x_new = np.linspace(min(bin_edges), max(bin_edges), 50)
     y_new = f(x_new) + tau_tolerance
     
-    #plt.plot(x_new, y_new, '--', color='orange')
-    #plt.show()
+    plt.plot(x_new, y_new, '--', color='orange')
+    plt.show()
     return f
 
 
