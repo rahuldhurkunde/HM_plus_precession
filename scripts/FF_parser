@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+import sys, os, logging
+import argparse as ap
+import configparser
+import argcomplete
+import functions as func
+import injections as inj
+import pycbc
+from pycbc import waveform, conversions, filter, types, distributions, detector, psd
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+import seaborn as sns
+import importlib
+import time
+import matplotlib.gridspec as gridspec
+import Pegasus.DAX3 as dax
+import pycbc.workflow as wf
+import pycbc.workflow.pegasus_workflow as wdax
+from pycbc.workflow import WorkflowConfigParser
+import h5py
+
+
+def to_file(path, ifo=None):
+    """ Takes a str and returns a pycbc.workflow.pegasus_workflow.File
+    instance.
+    """
+    fil = wdax.File(os.path.basename(path))
+    fil.ifo = ifo
+    path = os.path.abspath(path)
+    fil.PFN(path, "local")
+    return fil
+
+
+
+# Command line parser
+parser = ap.ArgumentParser()
+parser.add_argument('-wf', '--workflow-name', 
+		default = "gw", 
+		help ='specify name for the workflow')
+parser.add_argument('-ff', '--ff_config', 
+		default = "../Config/FF_config.ini", 
+		help ='specify config file for FF computation')
+parser.add_argument('-inj', '--injections', 
+		default = "../injections/new_injections.hdf5", 
+		help ='specify injection file')
+parser.add_argument('-tb', '--template_bank', 
+		default = "../banks/vanilla_BBHbank", 
+		help ='specify template bank')
+parser.add_argument('--tau_crawl', 
+		default = "../injections/tau_crawl.txt", 
+		help ='specify tau crawl file')
+parser.add_argument("--output_dir", 
+		default="output/", 
+		help="Path to output directory.")
+
+# add option groups
+wf.add_workflow_command_line_group(parser)
+
+# Parser command line
+args = parser.parse_args()
+
+# create workflow and sub-workflows
+workflow = wf.Workflow(args)
+exit()
+# make data output and results directories
+wf.makedir(args.output_dir)
+
+pathconfig = args.ff_config
+pathinj = args.injections
+pathtb = args.template_bank
+pathtau_crawl = args.tau_crawl
+
+#compute_FF
+FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos, 
+			out_dir=args.output_dir)
+
+#File handles for compute_FF workflow
+confighand = to_file(pathconfig)
+injhand = to_file(pathinj)
+tbhand = to_file(pathtb)
+tauhand = to_file(pathtau_crawl)
+
+node = FF_exe.create_node()
+node.add_input_opt('--ff_config', confighand)
+node.add_input_opt('--injections', injhand)
+node.add_input_opt('--template_bank', tbhand)
+node.add_input_opt('--tau_crawl', tauhand)
+FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
+workflow += node
+
+# write dax
+workflow.save('gw.dax')
+
