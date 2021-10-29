@@ -197,8 +197,8 @@ def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
     x_new = np.linspace(min(bin_edges), max(bin_edges), 50)
     y_new = f(x_new) + tau_tolerance
     
-    plt.plot(x_new, y_new, '--', color='orange')
-    plt.show()
+    #plt.plot(x_new, y_new, '--', color='orange')
+    #plt.show()
     return f
 
 
