@@ -7,6 +7,7 @@ import mass as mass
 import h5py
 import time
 import scipy
+import multiprocessing
 
 class tb_params:
         def __init__(self, m1, m2, s1z, s2z, tau0, tau3, mc, q):
@@ -33,9 +34,10 @@ class sg_params:
                 self.right_asc = right_asc
                 self.dec = dec
                 
-def save_matches_HDF(match, filename):
+def save_matches_HDF(match, t_ind, filename):
     with h5py.File(filename, 'w') as f:
-            f.create_dataset('match', data=match)
+            f.create_dataset('match', data=match) 
+            f.create_dataset('t_ind', data=t_ind)
     f.close()
     
 def read_matches_HDF(filename):
@@ -44,14 +46,18 @@ def read_matches_HDF(filename):
     return match
     
 def read_tb(filename, f_min):    
-    tb_file = np.loadtxt(filename)
+    tf = h5py.File(filename, 'r')
+    mass1 = tf['mass1']
+    mass2 = tf['mass2']
+    spin1z = tf['spin1z']
+    spin2z = tf['spin2z']
     tb = []
-    for i in range(len(tb_file)):
-        temp_tau0 = conversions.pycbc.conversions.tau0_from_mass1_mass2(tb_file[i][0], tb_file[i][4], f_min)
-        temp_tau3 = conversions.pycbc.conversions.tau3_from_mass1_mass2(tb_file[i][0], tb_file[i][4], f_min)
-        temp_mc = conversions.mchirp_from_mass1_mass2(tb_file[i][0], tb_file[i][4])
-        temp_q = tb_file[i][0]/tb_file[i][4]
-        temp_obj = tb_params(tb_file[i][0], tb_file[i][4], tb_file[i][3], tb_file[i][7], temp_tau0, temp_tau3, temp_mc, temp_q)
+    for i in range(len(mass1)):
+        temp_tau0 = conversions.tau0_from_mass1_mass2(mass1[i], mass2[i], f_min)
+        temp_tau3 = conversions.tau3_from_mass1_mass2(mass1[i], mass2[i], f_min)
+        temp_mc = conversions.mchirp_from_mass1_mass2(mass1[i], mass2[i])
+        temp_q = mass1[i]/mass2[i]
+        temp_obj = tb_params(mass1[i], mass2[i], spin1z[i], spin2z[i], temp_tau0, temp_tau3, temp_mc, temp_q)
         tb.append(temp_obj)
     return tb   
 
@@ -126,8 +132,8 @@ def random_params_from_tb(tb, f_min, nsignal):
     plt.show()
     return sg  
 
-def generate_template(tb, delta_f, f_min):
-    hp, hc = waveform.get_fd_waveform(approximant = "IMRPhenomD",
+def generate_template(tb, delta_f, f_min, approximant):
+    hp, hc = waveform.get_fd_waveform(approximant = approximant,
                                       mass1 = tb.m1,
                                       mass2 = tb.m2,
                                       spin1z = tb.s1z,
@@ -136,8 +142,8 @@ def generate_template(tb, delta_f, f_min):
                                       f_lower = f_min)
     return hp, hc
 
-def generate_signal(sg, delta_f, f_min): 
-    hp, hc = waveform.get_fd_waveform(approximant = "IMRPhenomD",
+def generate_signal(sg, delta_f, f_min, approximant): 
+    hp, hc = waveform.get_fd_waveform(approximant = approximant,
                                       mass1 = sg.m1,
                                       mass2 = sg.m2,
                                       spin1z = sg.s1z,
@@ -169,13 +175,13 @@ def resize_wfs(s_f, hp, hc):
     return s_f, hp, hc    
 
 
-def compute_match(sg, tb, PSD, temp_indices, delta_f, f_min, detect):
+def compute_match(sg, tb, PSD, temp_indices, delta_f, f_min, detect, approximant):
     match = []
     start = time.time()
     for i in range(len(temp_indices)):
         ind = temp_indices[i]
-        hp_template, hc_template = generate_template(tb[ind], delta_f, f_min)
-        hp_signal, hc_signal = generate_signal(sg, delta_f, f_min)  #Loss in match when signal is evaluated outisde the loop
+        hp_template, hc_template = generate_template(tb[ind], delta_f, f_min, approximant)
+        hp_signal, hc_signal = generate_signal(sg, delta_f, f_min, approximant)  #Loss in match when signal is generated outisde the loop
         temp_sf = signal_to_detector_frame(detect, hp_signal, hc_signal, sg)
         
         s_f = temp_sf
@@ -201,9 +207,8 @@ def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
     #plt.show()
     return f
 
-
 def compute_tauThreshold_envelope(sg_tau0, tau_diff, nbins):
-    tau_tolerance = 0.07
+    tau_tolerance = 0.5
     bins = np.linspace(min(sg_tau0), max(sg_tau0), nbins)
     #tau_indices_inbin = np.digitize(sg_tau0, bins)
 
@@ -213,16 +218,19 @@ def compute_tauThreshold_envelope(sg_tau0, tau_diff, nbins):
     tau_func = fit_tau_envelope(bin_edges, statistic, tau_tolerance)
     return tau_func
     
-def compute_FF(tb, sg, tau_func, tau_tolerance, psd, nsignal, detect, delta_f, f_min):
+def compute_FF(tb, sg, tau_func, tau_tolerance, psd, nsignal, detect, delta_f, f_min, approximant):
     FF_array = []
     recovered_tau = []
+    template_indices = []    
+
     for n in range(nsignal):
         tau0_threshold = tau_func(sg[n].tau0) + tau_tolerance
         template_indices = check_tau0_for_template_generation(tb, sg[n],tau0_threshold)
         if (n%100==0):
             print(n, len(tb), len(template_indices))
-        
-        match = compute_match(sg[n], tb, psd, template_indices, delta_f, f_min, detect)
+        match = compute_match(sg[n], tb, psd, template_indices, delta_f, f_min, detect, approximant)
         FF_array.append(max(match))
+    #pool = multiprocessing.Pool()
+    #FF_array[:] = pool.map(max(compute_match()))
         
     return FF_array

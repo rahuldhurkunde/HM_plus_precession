@@ -2,7 +2,6 @@
 import sys, os, logging
 import argparse as ap
 import configparser
-import argcomplete
 import functions as func
 import injections as inj
 import pycbc
@@ -32,20 +31,16 @@ def to_file(path, ifo=None):
     return fil
 
 
-
 # Command line parser
 parser = ap.ArgumentParser()
-parser.add_argument('-wf', '--workflow-name', 
-		default = "gw", 
-		help ='specify name for the workflow')
 parser.add_argument('-ff', '--ff_config', 
 		default = "../Config/FF_config.ini", 
 		help ='specify config file for FF computation')
 parser.add_argument('-inj', '--injections', 
-		default = "../injections/new_injections.hdf5", 
+		default = "../injections/baseline_injs.hdf", 
 		help ='specify injection file')
 parser.add_argument('-tb', '--template_bank', 
-		default = "../banks/vanilla_BBHbank", 
+		default = "../banks/baseline_bank.hdf", 
 		help ='specify template bank')
 parser.add_argument('--tau_crawl', 
 		default = "../injections/tau_crawl.txt", 
@@ -54,32 +49,29 @@ parser.add_argument("--output_dir",
 		default="output/", 
 		help="Path to output directory.")
 
+pycbc.init_logging(True)
+
 # add option groups
 wf.add_workflow_command_line_group(parser)
 
 # Parser command line
-args = parser.parse_args()
+args, remaining_args = parser.parse_known_args()
 
 # create workflow and sub-workflows
-workflow = wf.Workflow(args)
-exit()
+workflow = wf.Workflow(args, "gw")
+
 # make data output and results directories
 wf.makedir(args.output_dir)
-
-pathconfig = args.ff_config
-pathinj = args.injections
-pathtb = args.template_bank
-pathtau_crawl = args.tau_crawl
 
 #compute_FF
 FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos, 
 			out_dir=args.output_dir)
 
 #File handles for compute_FF workflow
-confighand = to_file(pathconfig)
-injhand = to_file(pathinj)
-tbhand = to_file(pathtb)
-tauhand = to_file(pathtau_crawl)
+confighand = to_file(args.ff_config)
+injhand = to_file(args.injections)
+tbhand = to_file(args.template_bank)
+tauhand = to_file(args.tau_crawl)
 
 node = FF_exe.create_node()
 node.add_input_opt('--ff_config', confighand)

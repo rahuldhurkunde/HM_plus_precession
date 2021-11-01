@@ -2,7 +2,6 @@
 import sys, os, logging
 import argparse as ap
 import configparser
-import argcomplete
 import functions as func
 import injections as inj
 import pycbc
@@ -27,9 +26,10 @@ def determine_values_from_parsing_config(config):
 	ninjections = config.getint('Required', 'ninjections')
 	psdname = config['Required'][ 'psd']
 	detectorname = config['Required']['detector']
+	approximant = config['Required']['approximant']
 	nbins_tau = config.getfloat('Tau_threshold', 'nbins_tau')
 	tau_tolerance = config.getfloat('Tau_threshold', 'tau_tolerance')
-	return f_min, delta_f, delta_t, psdname, detectorname, ninjections, nbins_tau, tau_tolerance
+	return f_min, delta_f, delta_t, psdname, detectorname, approximant, ninjections, nbins_tau, tau_tolerance
 
 def write(filename, FF_array, sg):
 	m1 = np.array([x.m1 for x in sg])
@@ -55,10 +55,8 @@ parser.add_argument('--injections',
 		required = True,
 		help ='specify injection file')
 parser.add_argument('-tb', '--template_bank', 
-		default = "../banks/vanilla_BBHbank", 
 		help ='specify template bank')
 parser.add_argument('--tau_crawl', 
-		default = "../injections/tau_crawl.txt",
 		help ='specify tau crawl file')
 parser.add_argument('--output_file', 
 		help ='specify output file', required=True)
@@ -68,7 +66,7 @@ if args.ff_config:
 	config = configparser.ConfigParser()
 	config.read([args.ff_config])
 
-f_min, delta_f, delta_t, psdname, detectorname, ninjections, nbins_tau, tau_tolerance = determine_values_from_parsing_config(config)
+f_min, delta_f, delta_t, psdname, detectorname, approximant, ninjections, nbins_tau, tau_tolerance = determine_values_from_parsing_config(config)
 
 #Read template bank
 tb = func.read_tb(args.template_bank, f_min)
@@ -87,7 +85,7 @@ psdcall_func = getattr(psd.analytical, psdname)
 psd = psdcall_func(length, delta_f, f_min)
 detect = detector.Detector(detectorname)
 
-FF_array = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min)
+FF_array = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min, approximant)
 
 write(args.output_file, FF_array, sg)
 
