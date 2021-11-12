@@ -2,7 +2,6 @@
 import sys, os, logging
 import argparse as ap
 import configparser
-import argcomplete
 import functions as func
 import injections as inj
 import pycbc
@@ -20,31 +19,33 @@ import pycbc.workflow.pegasus_workflow as wdax
 from pycbc.workflow import WorkflowConfigParser
 import h5py
 
-def determine_values_from_parsing_config(config):
+def determine_values_from_parsing_config(config, approximant_ind):
 	f_min = config.getfloat('Required', 'f_min')
 	delta_f = 1.0/(config.getfloat('Required', 'sampling_freq'))
 	delta_t = 1.0/(config.getfloat('Required', 'sampling_rate'))
 	ninjections = config.getint('Required', 'ninjections')
 	psdname = config['Required'][ 'psd']
 	detectorname = config['Required']['detector']
+	approximant_tb = config.get('Required', 'approximant_tb').split(' ')[approximant_ind]
+	approximant_sg = config.get('Required', 'approximant_sg')
 	nbins_tau = config.getfloat('Tau_threshold', 'nbins_tau')
 	tau_tolerance = config.getfloat('Tau_threshold', 'tau_tolerance')
-	return f_min, delta_f, delta_t, psdname, detectorname, ninjections, nbins_tau, tau_tolerance
+	return f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, ninjections, nbins_tau, tau_tolerance
 
-def write(filename, FF_array, sg):
+def write(filename, FF_array, recovered_tau, sg):
 	m1 = np.array([x.m1 for x in sg])
 	m2 = np.array([x.m2 for x in sg])
 	tau0 = np.array([x.tau0 for x in sg])
 	tau3 = np.array([x.tau3 for x in sg])
 
 	with h5py.File(filename, 'w') as f:
-            f.create_dataset("FF", data=FF_array)
-            f.create_dataset("mass1", data=m1)
-            f.create_dataset("mass2", data=m2)
-            f.create_dataset("tau0", data=tau0)
-            f.create_dataset("tau3", data=tau3)
+			f.create_dataset("FF", data=FF_array)
+			f.create_dataset("rec_tau", data=recovered_tau)
+			f.create_dataset("mass1", data=m1)
+			f.create_dataset("mass2", data=m2)
+			f.create_dataset("tau0", data=tau0)
+			f.create_dataset("tau3", data=tau3)
 	f.close()
-
 
 # Command line parser
 parser = ap.ArgumentParser()
@@ -55,11 +56,12 @@ parser.add_argument('--injections',
 		required = True,
 		help ='specify injection file')
 parser.add_argument('-tb', '--template_bank', 
-		default = "../banks/vanilla_BBHbank", 
 		help ='specify template bank')
 parser.add_argument('--tau_crawl', 
-		default = "../injections/tau_crawl.txt",
 		help ='specify tau crawl file')
+parser.add_argument('--approximant_ind',
+		default = 0, type=int, 
+		help ='specify the index from the list of approximants')
 parser.add_argument('--output_file', 
 		help ='specify output file', required=True)
 
@@ -68,7 +70,7 @@ if args.ff_config:
 	config = configparser.ConfigParser()
 	config.read([args.ff_config])
 
-f_min, delta_f, delta_t, psdname, detectorname, ninjections, nbins_tau, tau_tolerance = determine_values_from_parsing_config(config)
+f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, ninjections, nbins_tau, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
 
 #Read template bank
 tb = func.read_tb(args.template_bank, f_min)
@@ -87,6 +89,6 @@ psdcall_func = getattr(psd.analytical, psdname)
 psd = psdcall_func(length, delta_f, f_min)
 detect = detector.Detector(detectorname)
 
-FF_array = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min)
-write(args.output_file, FF_array, sg)
+FF_array, recovered_tau = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min, approximant_tb, approximant_sg)
 
+write(args.output_file, FF_array, recovered_tau, sg)

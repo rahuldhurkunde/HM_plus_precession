@@ -1,5 +1,5 @@
 import pycbc
-from pycbc import waveform, conversions, filter, types, distributions, detector, psd
+from pycbc import waveform, conversions, filter, types, distributions, detector, psd, io
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import numpy as np
@@ -39,12 +39,7 @@ def save_matches_HDF(match, t_ind, filename):
             f.create_dataset('match', data=match) 
             f.create_dataset('t_ind', data=t_ind)
     f.close()
-    
-def read_matches_HDF(filename):
-    f = h5py.File(filename, 'r')
-    match = np.array(f['match'])
-    return match
-    
+
 def read_tb(filename, f_min):    
     tf = h5py.File(filename, 'r')
     mass1 = tf['mass1']
@@ -60,6 +55,164 @@ def read_tb(filename, f_min):
         temp_obj = tb_params(mass1[i], mass2[i], spin1z[i], spin2z[i], temp_tau0, temp_tau3, temp_mc, temp_q)
         tb.append(temp_obj)
     return tb   
+
+def save_template(hp, hc, t_ind, filename):
+    with h5py.File(filename, 'w') as f:
+            f.create_dataset('hp', data=hp) 
+            f.create_dataset('hc', data=hc)
+            f.create_dataset('t_ind', data=t_ind)
+    f.close()
+    
+def read_template(t_ind, path, delta_f):
+    filename = "%s/template_%s.hdf" %(path, t_ind)
+    f = h5py.File(filename, 'r')
+    hp = types.frequencyseries.FrequencySeries(f['hp'], delta_f=delta_f)
+    hc = types.frequencyseries.FrequencySeries(f['hc'], delta_f=delta_f)
+    return hp, hc
+
+def generate_template(tb, delta_f, f_min, approximant_tb):
+    hp, hc = waveform.get_fd_waveform(approximant = approximant_tb,
+                                      mass1 = tb.m1,
+                                      mass2 = tb.m2,
+                                      spin1z = tb.s1z,
+                                      spin2z = tb.s2z,
+                                      delta_f = delta_f,
+                                      f_lower = f_min)
+    return hp, hc
+
+def generate_signal(sg, delta_f, f_min, approximant_sg): 
+    hp, hc = waveform.get_fd_waveform(approximant = approximant_sg,
+                                      mass1 = sg.m1,
+                                      mass2 = sg.m2,
+                                      spin1z = sg.s1z,
+                                      spin2z = sg.s2z,
+                                      distance = sg.dist,
+                                      inclination = sg.inc,
+                                      delta_f = delta_f,
+                                      f_lower = f_min)
+    return hp, hc
+
+def generate_and_save_templates(tb, delta_f, f_min, approximant_tb, path):
+    for n in range(len(tb)):
+        hp, hc = generate_template(tb[n], delta_f, f_min, approximant_tb)
+        t_ind = np.full(shape = len(hp), fill_value = n)
+        filename = '%s/template_%s.hdf' %(path, n)
+        try:
+            save_template(hp, hc, t_ind, filename)
+        except IOError:
+            print('path/%s does not exists' %approximant)
+            sys.exit()
+            
+            
+def signal_to_detector_frame(detector, hp_signal, hc_signal, sg):
+    fx, fy = detector.antenna_pattern(sg.right_asc, sg.dec, sg.polarization, 1126259462.0)
+    signal_detector = hp_signal*fx + hc_signal*fy
+    return signal_detector
+
+def check_tau0_for_template_generation(tb, signal, tau0_threshold):
+    temp_indices = []
+    for i in range(len(tb)):
+        if ( abs(tb[i].tau0 - signal.tau0) < tau0_threshold):
+            temp_indices.append(i)
+    return temp_indices
+
+def resize_wfs(s_f, hp, hc):
+    if (len(s_f) > len(hp)):
+        hp.resize(len(s_f))
+        hc.resize(len(s_f))
+    else:
+        s_f.resize(len(hp))
+    return s_f, hp, hc    
+
+def real_imag_dot_product(sg, PSD, f_min, delta_f, approximant, nsignal):
+    dot_products = []
+    for n in range(nsignal):
+        hp, hc = generate_signal(sg[n], delta_f, f_min, approximant)
+        temp = filter.matchedfilter.overlap_cplx(hp, hc, psd = PSD, low_frequency_cutoff = f_min, normalized=True)
+        dot_products.append(np.abs(temp.imag))
+    return dot_products    
+
+def flat_tau_envelope(taudiff, taumax, nbins):
+    array_len = 200
+    taus = np.linspace(0.0, taumax, array_len)
+    tau_diff_array = np.full(shape = array_len, fill_value = taudiff)
+    filename = 'injections/flat_tau_crawl_%s.txt' %taudiff
+    np.savetxt(filename, np.c_[taus, tau_diff_array])
+
+def compute_tauThreshold_envelope(sg_tau0, tau_diff, nbins):
+    tau_tolerance = 0.5
+    bins = np.linspace(min(sg_tau0), max(sg_tau0), nbins)
+    statistic, bin_edges, _ = scipy.stats.binned_statistic(sg_tau0, tau_diff, 'max', bins = nbins)
+    bin_edges = bin_edges[:-1]
+    np.savetxt('injections/tau_threshold.txt', np.c_[bin_edges, statistic])
+
+def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
+    interp_points  = 50     # HARD CODED - try to remove  
+    #check for NaNs
+    idx = np.isfinite(statistic)
+    f = interp1d(bin_edges[idx], statistic[idx], fill_value="extrapolate")
+    
+    x_new = np.linspace(min(bin_edges), max(bin_edges), interp_points)
+    y_new = f(x_new) + tau_tolerance
+
+    #plt.plot(x_new, y_new, '--', color='orange')
+    #plt.show()
+    return f
+
+def compute_match(tb, sg, PSD, temp_indices, delta_f, f_min, detect, approximant_tb, approximant_sg):
+    matches = []
+    sp, sc = generate_signal(sg, delta_f, f_min, approximant_sg)
+    s_f = signal_to_detector_frame(detect, sp, sc, sg)
+    s_f.resize(len(PSD))
+    for i in range(len(temp_indices)):  
+        ind = temp_indices[i]
+        #hp, hc = read_template(ind, path, delta_f)
+        hp, hc = generate_template(tb[ind], delta_f, f_min, approximant_tb)
+        hp.resize(len(PSD))
+        
+        temp_match = filter.match(hp, s_f, psd = PSD, low_frequency_cutoff = f_min)[0]
+        matches.append(temp_match)
+        #if (i%100==0):
+            #print(i, temp_match, len(matches))
+    return matches   
+
+def compute_FF(tb, sg, tau_func, tau_tolerance, psd, nsignal, detect, delta_f, f_min, approximant_tb, approximant_sg):
+    FF_array = []
+    recovered_tau = []
+    template_indices = []    
+
+    for n in range(nsignal):
+        tau0_threshold = tau_func(sg[n].tau0) + tau_tolerance
+        template_indices = check_tau0_for_template_generation(tb, sg[n],tau0_threshold)
+    
+        match = compute_match(tb, sg[n], psd, template_indices, delta_f, f_min, detect, approximant_tb, approximant_sg)
+        FF_array.append(max(match))
+        recovered_tau.append(tb[template_indices[np.argmax(match)]].tau0)
+        #if (n%100==0):
+            #print(n, len(tb), len(template_indices))
+    return np.array(FF_array), np.array(recovered_tau)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def mass_samples_from_mc_q(mc_min, mc_max, q_min, q_max, nsignal):
     mc_distribution = mass.MchirpfromUniformMass1Mass2(mc=(mc_min, mc_max-30))   
@@ -79,13 +232,6 @@ def mass_samples_from_m1_m2(m1_min, m1_max, m2_min, m2_max, nsignal):
     m2 = m2_dist.rvs(size = nsignal)
     return m1, m2
 
-def get_mass_ranges_from_TB(tb):
-    m1_min = min(x.m1 for x in tb)
-    m1_max = max(x.m1 for x in tb)
-    m2_min = min(x.m2 for x in tb)
-    m2_max = max(x.m2 for x in tb)
-    print(m1_min, m1_max, m2_min, m2_max)
-    return m1_min, m1_max, m2_min, m2_max
      
 def random_params_from_tb(tb, f_min, nsignal):
     mc_min = min(x.mc for x in tb)
@@ -131,106 +277,3 @@ def random_params_from_tb(tb, f_min, nsignal):
     plt.legend()
     plt.show()
     return sg  
-
-def generate_template(tb, delta_f, f_min, approximant):
-    hp, hc = waveform.get_fd_waveform(approximant = approximant,
-                                      mass1 = tb.m1,
-                                      mass2 = tb.m2,
-                                      spin1z = tb.s1z,
-                                      spin2z = tb.s2z,
-                                      delta_f = delta_f,
-                                      f_lower = f_min)
-    return hp, hc
-
-def generate_signal(sg, delta_f, f_min, approximant): 
-    hp, hc = waveform.get_fd_waveform(approximant = approximant,
-                                      mass1 = sg.m1,
-                                      mass2 = sg.m2,
-                                      spin1z = sg.s1z,
-                                      spin2z = sg.s2z,
-                                      distance = sg.dist,
-                                      inclination = sg.inc,
-                                      delta_f = delta_f,
-                                      f_lower = f_min)
-    return hp, hc
-
-def signal_to_detector_frame(detector, hp_signal, hc_signal, sg):
-    fx, fy = detector.antenna_pattern(sg.right_asc, sg.dec, sg.polarization, 1126259462.0)
-    signal_detector = hp_signal*fx + hc_signal*fy
-    return signal_detector
-
-def check_tau0_for_template_generation(tb, signal, tau0_threshold):
-    temp_indices = []
-    for i in range(len(tb)):
-        if ( abs(tb[i].tau0 - signal.tau0) < tau0_threshold):
-            temp_indices.append(i)
-    return temp_indices
-
-def resize_wfs(s_f, hp, hc):
-    if (len(s_f) > len(hp)):
-        hp.resize(len(s_f))
-        hc.resize(len(s_f))
-    else:
-        s_f.resize(len(hp))
-    return s_f, hp, hc    
-
-
-def compute_match(sg, tb, PSD, temp_indices, delta_f, f_min, detect, approximant):
-    match = []
-    start = time.time()
-    for i in range(len(temp_indices)):
-        ind = temp_indices[i]
-        hp_template, hc_template = generate_template(tb[ind], delta_f, f_min, approximant)
-        hp_signal, hc_signal = generate_signal(sg, delta_f, f_min, approximant)  #Loss in match when signal is generated outisde the loop
-        temp_sf = signal_to_detector_frame(detect, hp_signal, hc_signal, sg)
-        
-        s_f = temp_sf
-        s_f.resize(len(hp_template))
-        #s_f, hp, hc = resize_wfs(s_f, hp_template, hc_template)
-        match.append(filter.match(hp_template, s_f, psd = PSD, low_frequency_cutoff = f_min)[0])
-        #if (match[i] > 0.95):
-        #    print(tb[i].tau0, match[i], i)
-    end = time.time()
-    #print('Exec time', end - start)
-    return match   
-
-def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
-    #check for NaNs
-    idx = np.isfinite(statistic)
-    
-    f = interp1d(bin_edges[idx], statistic[idx], fill_value="extrapolate")
-    
-    x_new = np.linspace(min(bin_edges), max(bin_edges), 50)
-    y_new = f(x_new) + tau_tolerance
-    
-    #plt.plot(x_new, y_new, '--', color='orange')
-    #plt.show()
-    return f
-
-def compute_tauThreshold_envelope(sg_tau0, tau_diff, nbins):
-    tau_tolerance = 0.5
-    bins = np.linspace(min(sg_tau0), max(sg_tau0), nbins)
-    #tau_indices_inbin = np.digitize(sg_tau0, bins)
-
-    statistic, bin_edges, _ = scipy.stats.binned_statistic(sg_tau0, tau_diff, 'max', bins = nbins)
-    bin_edges = bin_edges[:-1]
-    np.savetxt('injections/tau_threshold.txt', np.c_[bin_edges, statistic])
-    tau_func = fit_tau_envelope(bin_edges, statistic, tau_tolerance)
-    return tau_func
-    
-def compute_FF(tb, sg, tau_func, tau_tolerance, psd, nsignal, detect, delta_f, f_min, approximant):
-    FF_array = []
-    recovered_tau = []
-    template_indices = []    
-
-    for n in range(nsignal):
-        tau0_threshold = tau_func(sg[n].tau0) + tau_tolerance
-        template_indices = check_tau0_for_template_generation(tb, sg[n],tau0_threshold)
-        if (n%100==0):
-            print(n, len(tb), len(template_indices))
-        match = compute_match(sg[n], tb, psd, template_indices, delta_f, f_min, detect, approximant)
-        FF_array.append(max(match))
-    #pool = multiprocessing.Pool()
-    #FF_array[:] = pool.map(max(compute_match()))
-        
-    return FF_array

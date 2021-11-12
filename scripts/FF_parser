@@ -30,21 +30,24 @@ def to_file(path, ifo=None):
     fil.PFN(path, "local")
     return fil
 
-
 # Command line parser
 parser = ap.ArgumentParser()
 parser.add_argument('-ff', '--ff_config', 
-		default = "../Config/FF_config.ini", 
+		default = "../../Config/FF_config.ini", 
 		help ='specify config file for FF computation')
+
 parser.add_argument('-inj', '--injections', 
-		default = "../injections/baseline_injs.hdf", 
+		#default = "../injections/injections.hdf", 
 		help ='specify injection file')
+
 parser.add_argument('-tb', '--template_bank', 
-		default = "../banks/baseline_bank.hdf", 
+		#default = "../../banks/parallel/smallbank/combined_bank.hdf", 
 		help ='specify template bank')
+
 parser.add_argument('--tau_crawl', 
-		default = "../injections/tau_crawl.txt", 
+		default = "../../injections/flat_tau_crawl_1.0.txt", 
 		help ='specify tau crawl file')
+
 parser.add_argument("--output_dir", 
 		default="output/", 
 		help="Path to output directory.")
@@ -63,24 +66,25 @@ workflow = wf.Workflow(args, "gw")
 # make data output and results directories
 wf.makedir(args.output_dir)
 
-#compute_FF
-FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos, 
-			out_dir=args.output_dir)
-
 #File handles for compute_FF workflow
 confighand = to_file(args.ff_config)
 injhand = to_file(args.injections)
 tbhand = to_file(args.template_bank)
 tauhand = to_file(args.tau_crawl)
 
-node = FF_exe.create_node()
-node.add_input_opt('--ff_config', confighand)
-node.add_input_opt('--injections', injhand)
-node.add_input_opt('--template_bank', tbhand)
-node.add_input_opt('--tau_crawl', tauhand)
-FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
-workflow += node
+for n in range(len(workflow.ifos)):
+	#compute_FF
+	FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos[n], 
+				out_dir=args.output_dir)
+
+	node = FF_exe.create_node()
+	node.add_input_opt('--ff_config', confighand)
+	node.add_input_opt('--injections', injhand)
+	node.add_input_opt('--template_bank', tbhand)
+	node.add_input_opt('--tau_crawl', tauhand)
+	node.add_opt('--approximant_ind', n)
+	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
+	workflow += node
 
 # write dax
 workflow.save('gw.dax')
-
