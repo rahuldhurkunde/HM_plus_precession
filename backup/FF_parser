@@ -82,7 +82,7 @@ for n in range(len(workflow.ifos)):
 	node.add_input_opt('--injections', injhand)
 	node.add_input_opt('--template_bank', tbhand)
 	node.add_input_opt('--tau_crawl', tauhand)
-	node.add_opt('--approximant_ind', n)
+	#node.add_opt('--approximant_ind', n)
 	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
 	workflow += node
 

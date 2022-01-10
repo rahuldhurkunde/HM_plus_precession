@@ -3,15 +3,18 @@
 import pycbc
 from pycbc import waveform, conversions, filter, types, distributions, detector, psd
 import numpy as np
-import mass as mass
 import functions as func
 import h5py
 
 class tb_params:
-        def __init__(self, m1, m2, s1z, s2z, tau0, tau3, mc, q):
+        def __init__(self, m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, tau0, tau3, mc, q):
                 self.m1 = m1
                 self.m2 = m2
+                self.s1x = s1x
+                self.s1y = s1y
                 self.s1z = s1z
+                self.s2x = s2x
+                self.s2y = s2y
                 self.s2z = s2z
                 self.tau0 = tau0
                 self.tau3 = tau3
@@ -19,10 +22,14 @@ class tb_params:
                 self.q = q
 
 class sg_params:
-        def __init__(self, m1, m2, s1z, s2z, tau0, tau3, dist, inc, polarization, right_asc, dec):
+        def __init__(self, m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, tau0, tau3, dist, inc, polarization, right_asc, dec):
                 self.m1 = m1
                 self.m2 = m2
+                self.s1x = s1x
+                self.s1y = s1y
                 self.s1z = s1z
+                self.s2x = s2x
+                self.s2y = s2y
                 self.s2z = s2z
                 self.tau0 = tau0
                 self.tau3 = tau3
@@ -69,8 +76,12 @@ def read_injections_HDF(filename, nsignal, f_min):
         tau3 = conversions.pycbc.conversions.tau3_from_mass1_mass2(m1, m2, f_min)
         temp_obj = sg_params(m1, 
                             m2, 
-                            hf['spin1z'][i], 
-                            hf['spin2z'][i], 
+                            hf['spin1x'][i], 
+                            hf['spin1y'][i], 
+                            hf['spin1z'][i],
+                            hf['spin2x'][i], 
+                            hf['spin2y'][i], 
+                            hf['spin2z'][i],
                             tau0, 
                             tau3, 
                             hf['distance'][i], 

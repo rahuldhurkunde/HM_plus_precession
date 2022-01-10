@@ -33,7 +33,7 @@ def to_file(path, ifo=None):
 # Command line parser
 parser = ap.ArgumentParser()
 parser.add_argument('-ff', '--ff_config', 
-		default = "../../Config/FF_config.ini", 
+		default = "/work/rahul.dhurkunde/HM_and_precession/Config/FF_config.ini", 
 		help ='specify config file for FF computation')
 
 parser.add_argument('-inj', '--injections', 
@@ -45,7 +45,7 @@ parser.add_argument('-tb', '--template_bank',
 		help ='specify template bank')
 
 parser.add_argument('--tau_crawl', 
-		default = "../../injections/flat_tau_crawl_1.0.txt", 
+		#default = "/work/rahul.dhurkunde/HM_and_precession/injections/flat_tau_crawl_0.5.txt", 
 		help ='specify tau crawl file')
 
 parser.add_argument("--output_dir", 
@@ -82,7 +82,7 @@ for n in range(len(workflow.ifos)):
 	node.add_input_opt('--injections', injhand)
 	node.add_input_opt('--template_bank', tbhand)
 	node.add_input_opt('--tau_crawl', tauhand)
-	node.add_opt('--approximant_ind', n)
+	#node.add_opt('--approximant_ind', n)
 	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
 	workflow += node
 

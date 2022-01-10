@@ -28,9 +28,10 @@ def determine_values_from_parsing_config(config, approximant_ind):
 	detectorname = config['Required']['detector']
 	approximant_tb = config.get('Required', 'approximant_tb').split(' ')[approximant_ind]
 	approximant_sg = config.get('Required', 'approximant_sg')
+	HMs = config.getboolean('Required', 'HMs')
 	nbins_tau = config.getfloat('Tau_threshold', 'nbins_tau')
 	tau_tolerance = config.getfloat('Tau_threshold', 'tau_tolerance')
-	return f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, ninjections, nbins_tau, tau_tolerance
+	return f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, HMs, ninjections, nbins_tau, tau_tolerance
 
 def write(filename, FF_array, recovered_tau, sg):
 	m1 = np.array([x.m1 for x in sg])
@@ -70,7 +71,7 @@ if args.ff_config:
 	config = configparser.ConfigParser()
 	config.read([args.ff_config])
 
-f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, ninjections, nbins_tau, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
+f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, HMs, ninjections, nbins_tau, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
 
 #Read template bank
 tb = func.read_tb(args.template_bank, f_min)
@@ -89,6 +90,9 @@ psdcall_func = getattr(psd.analytical, psdname)
 psd = psdcall_func(length, delta_f, f_min)
 detect = detector.Detector(detectorname)
 
-FF_array, recovered_tau = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min, approximant_tb, approximant_sg)
+FF_array, recovered_tau = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs)
 
 write(args.output_file, FF_array, recovered_tau, sg)
+
+#./compute_FF --ff_config ../Config/FF_config.ini --injections ../injections/testing/0.hdf --template_bank ../banks/parallel/smallbank/combined_bank.hdf --tau_crawl ../injections/flat_tau_crawl_0.5.txt --output_file yolo.hdf
+
