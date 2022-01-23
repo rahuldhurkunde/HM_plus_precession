@@ -10,14 +10,10 @@ import multiprocessing
 import sys
 
 class tb_params:
-        def __init__(self, m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, tau0, tau3, mc, q):
+        def __init__(self, m1, m2, s1z, s2z, tau0, tau3, mc, q):
                 self.m1 = m1
                 self.m2 = m2
-                self.s1x = s1x
-                self.s1y = s1y
                 self.s1z = s1z
-                self.s2x = s2x
-                self.s2y = s2y
                 self.s2z = s2z
                 self.tau0 = tau0
                 self.tau3 = tau3
@@ -53,12 +49,14 @@ def read_tb(filename, f_min):
     print('Template bank --', filename)
     mass1 = tf['mass1']
     mass2 = tf['mass2']
-    spin1x = tf['spin1x']
-    spin1y = tf['spin1y']
     spin1z = tf['spin1z']
-    spin2x = tf['spin2x']
-    spin2y = tf['spin2y']
     spin2z = tf['spin2z']
+    
+    #spin1x = tf['spin1x']
+    #spin1y = tf['spin1y']
+    #spin2x = tf['spin2x']
+    #spin2y = tf['spin2y']
+    
     tb = []
     for i in range(len(mass1)):
         temp_tau0 = conversions.tau0_from_mass1_mass2(mass1[i], mass2[i], f_min)
@@ -66,26 +64,21 @@ def read_tb(filename, f_min):
         temp_mc = conversions.mchirp_from_mass1_mass2(mass1[i], mass2[i])
         temp_q = mass1[i]/mass2[i]
         temp_obj = tb_params(mass1[i], mass2[i],
-                             spin1x[i], spin1y[i], spin1z[i],
-                             spin2x[i], spin2y[i], spin2z[i],
+                             spin1z[i],
+                             spin2z[i],
                              temp_tau0, temp_tau3, temp_mc, temp_q)
         tb.append(temp_obj)
     return tb   
 
 
-def generate_template(tb, delta_f, f_min, approximant_tb, **kwargs):
+def generate_template(tb, delta_f, f_min, approximant_tb):
     hp, hc = waveform.get_fd_waveform(approximant = approximant_tb,
                                       mass1 = tb.m1,
                                       mass2 = tb.m2,
-                                      spin1x = tb.s1x,
-                                      spin1y = tb.s1y,
                                       spin1z = tb.s1z,
-                                      spin2x = tb.s2x,
-                                      spin2y = tb.s2y,
                                       spin2z = tb.s2z,
                                       delta_f = delta_f,
-                                      f_lower = f_min,
-                                      mode_array = kwargs.get('modes'))
+                                      f_lower = f_min,)
     return hp, hc
 
 def generate_signal(sg, delta_f, f_min, approximant_sg, **kwargs):
@@ -101,7 +94,8 @@ def generate_signal(sg, delta_f, f_min, approximant_sg, **kwargs):
                                       distance = sg.dist,
                                       inclination = sg.inc,
                                       delta_f = delta_f,
-                                      f_lower = f_min)
+                                      f_lower = f_min,
+                                      mode_array = kwargs.get('modes'))
     return hp, hc
             
             
