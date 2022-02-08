@@ -71,23 +71,20 @@ workflow = wf.Workflow(args, "gw")
 wf.makedir(args.output_dir)
 
 #File handles for compute_FF workflow
-confighand = to_file(args.ff_config)
-psdfilehand = to_file(args.psd_file)
-injhand = to_file(args.injections)
-tbhand = to_file(args.template_bank)
-tauhand = to_file(args.tau_crawl)
+#confighand = to_file(args.ff_config)
+#psdfilehand = to_file(args.psd_file)
+#injhand = to_file(args.injections)
+#tbhand = to_file(args.template_bank)
+#tauhand = to_file(args.tau_crawl)
 
-for n in range(len(workflow.ifos)):
+
+for n in range(1):
 	#compute_FF
 	FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos[n], 
 				out_dir=args.output_dir)
 
 	node = FF_exe.create_node()
-	node.add_input_opt('--ff_config', confighand)
-	node.add_input_opt('--psd_file', psdfilehand)
-	node.add_input_opt('--injections', injhand)
-	node.add_input_opt('--template_bank', tbhand)
-	node.add_input_opt('--tau_crawl', tauhand)
+	#node.add_input_opt('--tau_crawl', tauhand)
 	#node.add_opt('--approximant_ind', n)
 	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
 	workflow += node

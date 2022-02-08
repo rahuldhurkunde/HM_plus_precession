@@ -24,12 +24,13 @@ def determine_values_from_parsing_config(config, approximant_ind):
 	delta_f = 1.0/(config.getfloat('Required', 'sampling_freq'))
 	delta_t = 1.0/(config.getfloat('Required', 'sampling_rate'))
 	ninjections = config.getint('Required', 'ninjections')
+	injs_per_job = config.getint('Required', 'injs_per_job')
 	detectorname = config['Required']['detector']
 	approximant_tb = config.get('Required', 'approximant_tb').split(' ')[approximant_ind]
 	approximant_sg = config.get('Required', 'approximant_sg')
 	HMs = config.getboolean('Required', 'HMs')
 	tau_tolerance = config.getfloat('Tau_threshold', 'tau_tolerance')
-	return f_min, delta_f, delta_t, detectorname, approximant_tb, approximant_sg, HMs, ninjections, tau_tolerance
+	return f_min, delta_f, delta_t, detectorname, HMs, tau_tolerance
 
 def write(filename, FF_array, recovered_tau, sg):
 	m1 = np.array([x.m1 for x in sg])
@@ -57,9 +58,21 @@ parser.add_argument('--psd_file',
 parser.add_argument('--injections', 
 		required = True,
 		help ='specify injection file')
+parser.add_argument('--ninjections', 
+		required = True,
+		help ='specify number of injections')
+parser.add_argument('--approximant_sg', 
+		required = True,
+		help ='specify approximant used for signals')
+
+
 parser.add_argument('-tb', '--template_bank', 
 		help ='specify template bank')
-parser.add_argument('--tau_crawl', 
+parser.add_argument('--approximant_tb', 
+		required = True,
+		help ='specify approximant used for templates')
+
+parser.add_argument('--tau_crawl',
 		help ='specify tau crawl file')
 parser.add_argument('--approximant_ind',
 		default = 0, type=int, 
@@ -72,13 +85,13 @@ if args.ff_config:
 	config = configparser.ConfigParser()
 	config.read([args.ff_config])
 
-f_min, delta_f, delta_t, detectorname, approximant_tb, approximant_sg, HMs, ninjections, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
+f_min, delta_f, delta_t, detectorname, HMs, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
 
 #Read template bank
 tb = func.read_tb(args.template_bank, f_min)
 
 #Read injections
-sg = inj.read_injections_HDF(args.injections, ninjections, f_min)
+sg = inj.read_injections_HDF(args.injections, injs_per_job, f_min)
 
 #Tau_threshold function
 tau_bin_edges = np.loadtxt(args.tau_crawl)[:,0]
@@ -93,7 +106,7 @@ psd = pycbc.psd.read.from_txt(args.psd_file, length, delta_f, f_min, is_asd_file
 detect = detector.Detector(detectorname)
 
 #Compute Matches
-FF_array, recovered_tau = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs)
+FF_array, recovered_tau = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, injs_per_job, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs)
 
 #Write Matches
 write(args.output_file, FF_array, recovered_tau, sg)
