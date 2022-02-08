@@ -1,0 +1,13 @@
+accounting_group    = cbc.prod.search
+Universe        = vanilla
+Executable      = submit.sh 
+Arguments       =
+initialdir      = $(ProcID)
+transfer_input_files = ../injections/$(ProcID).hdf, ../banks/parallel/smallbank/combined_bank.hdf ../injections/flat_tau_crawl_0.5.txt  
+request_cpus    = 4
+log             = yolo.log
+output          = yolo.out
+error           = yolo.err
+getenv = True
+queue 2
+

@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+import sys, os, logging
+import argparse as ap
+import configparser
+import functions as func
+import injections as inj
+import pycbc
+from pycbc import waveform, conversions, filter, types, distributions, detector, psd
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+import seaborn as sns
+import importlib
+import time
+import matplotlib.gridspec as gridspec
+import Pegasus.DAX3 as dax
+import pycbc.workflow as wf
+import pycbc.workflow.pegasus_workflow as wdax
+from pycbc.workflow import WorkflowConfigParser
+import h5py
+
+def determine_values_from_parsing_config(config, approximant_ind):
+	f_min = config.getfloat('Required', 'f_min')
+	delta_f = 1.0/(config.getfloat('Required', 'sampling_freq'))
+	delta_t = 1.0/(config.getfloat('Required', 'sampling_rate'))
+	ninjections = config.getint('Required', 'ninjections')
+	psdname = config['Required'][ 'psd']
+	detectorname = config['Required']['detector']
+	approximant_tb = config.get('Required', 'approximant_tb').split(' ')[approximant_ind]
+	approximant_sg = config.get('Required', 'approximant_sg')
+	HMs = config.getboolean('Required', 'HMs')
+	tau_tolerance = config.getfloat('Tau_threshold', 'tau_tolerance')
+	return f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, HMs, ninjections, tau_tolerance
+
+def write(filename, FF_array, recovered_tau, sg):
+	m1 = np.array([x.m1 for x in sg])
+	m2 = np.array([x.m2 for x in sg])
+	tau0 = np.array([x.tau0 for x in sg])
+	tau3 = np.array([x.tau3 for x in sg])
+
+	with h5py.File(filename, 'w') as f:
+			f.create_dataset("FF", data=FF_array)
+			f.create_dataset("rec_tau", data=recovered_tau)
+			f.create_dataset("mass1", data=m1)
+			f.create_dataset("mass2", data=m2)
+			f.create_dataset("tau0", data=tau0)
+			f.create_dataset("tau3", data=tau3)
+	f.close()
+
+# Command line parser
+parser = ap.ArgumentParser()
+parser.add_argument('--ff_config', 
+		required = True,
+		help ='specify FF-config file')
+parser.add_argument('--injections', 
+		required = True,
+		help ='specify injection file')
+parser.add_argument('-tb', '--template_bank', 
+		help ='specify template bank')
+parser.add_argument('--tau_crawl', 
+		help ='specify tau crawl file')
+parser.add_argument('--approximant_ind',
+		default = 0, type=int, 
+		help ='specify the index from the list of approximants')
+parser.add_argument('--output_file', 
+		help ='specify output file', required=True)
+
+args, remaining_args = parser.parse_known_args()
+if args.ff_config:
+	config = configparser.ConfigParser()
+	config.read([args.ff_config])
+
+f_min, delta_f, delta_t, psdname, detectorname, approximant_tb, approximant_sg, HMs, ninjections, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
+
+#Read template bank
+tb = func.read_tb(args.template_bank, f_min)
+
+#Read injections
+sg = inj.read_injections_HDF(args.injections, ninjections, f_min)
+
+#Tau_threshold function
+tau_bin_edges = np.loadtxt(args.tau_crawl)[:,0]
+tau_bin_statistic = np.loadtxt(args.tau_crawl)[:,1]
+tau_func = func.fit_tau_envelope(tau_bin_edges, tau_bin_statistic, tau_tolerance)
+
+#Read/compute matches
+length = int(1.0/(delta_f*delta_t)/2 + 1)
+psdcall_func = getattr(psd.analytical, psdname)
+psd = psdcall_func(length, delta_f, f_min)
+detect = detector.Detector(detectorname)
+
+start_g = time.time()
+FF_array, recovered_tau = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, ninjections, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs)
+end_g = time.time()
+print('Global time for 20 injections', end_g-start_g)
+
+write(args.output_file, FF_array, recovered_tau, sg)
+
+#./compute_FF --ff_config ../Config/FF_config.ini --injections ../injections/testing/0.hdf --template_bank ../banks/parallel/smallbank/combined_bank.hdf --tau_crawl ../injections/flat_tau_crawl_0.5.txt --output_file yolo.hdf
+
