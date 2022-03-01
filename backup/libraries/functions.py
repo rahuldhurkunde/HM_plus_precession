@@ -8,7 +8,6 @@ import time
 import scipy
 import multiprocessing
 import sys
-from objsize import get_deep_size
 
 class tb_params:
         def __init__(self, m1, m2, s1z, s2z, tau0, tau3):
@@ -61,6 +60,15 @@ def read_tb(filename, f_min):
                             spin2z[i],
                             tau0[i],
                             tau3[i])
+
+        #temp_tau0 = conversions.tau0_from_mass1_mass2(mass1[i], mass2[i], f_min)
+        #temp_tau3 = conversions.tau3_from_mass1_mass2(mass1[i], mass2[i], f_min)
+        #temp_mc = conversions.mchirp_from_mass1_mass2(mass1[i], mass2[i])
+        #temp_q = mass1[i]/mass2[i]
+        #temp_obj = tb_params(mass1[i], mass2[i],
+         #                    spin1z[i],
+         #                    spin2z[i],
+         #                    temp_tau0, temp_tau3, temp_mc, temp_q)
         tb.append(temp_obj)
     return tb   
 
@@ -144,27 +152,7 @@ def fit_tau_envelope(bin_edges, statistic, tau_tolerance):
     #plt.plot(x_new, y_new, '--', color='orange')
     return f
 
-def get_nearby_templates(tb_file, indices, f_min):
-    tf = h5py.File(tb_file, 'r')
-    mass1 = tf['mass1']
-    mass2 = tf['mass2']
-    spin1z = tf['spin1z']
-    spin2z = tf['spin2z']
-    tau0 = tf['tau0']
-    tau3 = tf['tau3']
-    
-    tb = []
-    for k in indices:
-        temp_obj = tb_params(mass1[k],
-                            mass2[k],
-                            spin1z[k],
-                            spin2z[k],
-                            tau0[k],
-                            tau3[k])
-        tb.append(temp_obj)
-    return tb
-
-def compute_match(tb, sg, PSD, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs):
+def compute_match(tb, sg, PSD, temp_indices, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs):
     if HMs == True:
         sp, sc = generate_signal(sg, delta_f, f_min, approximant_sg)
     else:
@@ -175,8 +163,10 @@ def compute_match(tb, sg, PSD, delta_f, f_min, detect, approximant_tb, approxima
     s_f.resize(len(PSD))
     
     matches = []
-    for i in range(len(tb)):          
-        hp, hc = generate_template(tb[i], delta_f, f_min, approximant_tb)
+    for i in range(len(temp_indices)):  
+        ind = temp_indices[i]
+        
+        hp, hc = generate_template(tb[ind], delta_f, f_min, approximant_tb)
         hp.resize(len(PSD))
         
         sigmasq_sg = filter.matchedfilter.sigmasq(s_f, psd=PSD, low_frequency_cutoff=f_min)
@@ -186,7 +176,7 @@ def compute_match(tb, sg, PSD, delta_f, f_min, detect, approximant_tb, approxima
             #print(i, temp_match, len(matches))
     return matches, sigmasq_sg   
 
-def compute_FF(tb_file, sg, indices_file, PSD, nsignal, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs):
+def compute_FF(tb, sg, tau_func, tau_tolerance, psd, nsignal, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs):
     FF_array = []
     recovered_tau = []
     template_indices = []
@@ -194,23 +184,23 @@ def compute_FF(tb_file, sg, indices_file, PSD, nsignal, detect, delta_f, f_min, 
 
     for n in range(nsignal):
         start = time.time()
-        hf = h5py.File(indices_file, 'r')
-        key = '%s' %n
-        template_indices = hf[key]
-        tb = get_nearby_templates(tb_file, template_indices, f_min)
-        print( 'No.templates around', len(template_indices), 'Size of tb', get_deep_size(tb)/10**9, 'GBs')
+        tau0_threshold = tau_func(sg[n].tau0) + tau_tolerance
+        start_tau = time.time()
+        template_indices = check_tau0_for_template_generation(tb, sg[n],tau0_threshold)
+        end_tau = time.time()
+        print(len(template_indices), 'Templates around inj', n)
         
         if (len(template_indices) == 0):
             sys.exit(' ""Injection outside the parameter region ""')
         else:
-            match, sigmasq_sg = compute_match(tb, sg[n], PSD, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs)
+            match, sigmasq_sg = compute_match(tb, sg[n], psd, template_indices, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs)
             best_templ_ind = np.argmax(match)
             
             sigmasqs.append(sigmasq_sg)
             FF_array.append(match[best_templ_ind])
-            recovered_tau.append(tb[best_templ_ind].tau0)
+            recovered_tau.append(tb[template_indices[best_templ_ind]].tau0)
         end = time.time()
-        print('Inj --', n, 'took', end-start, 'secs')
+        print('Inj --', n, 'took', end-start)
     return np.array(FF_array), np.array(recovered_tau), np.array(sigmasqs)
 
 

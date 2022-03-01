@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+#./FF_parser --config-files /work/rahul.dhurkunde/HM_and_precession/Config/workflow.ini --ff_config /work/rahul.dhurkunde/HM_and_precession/Config/testFF_config.ini --psd_file /work/rahul.dhurkunde/HM_and_precession/psds/ZDHP.txt --template_bank /work/rahul.dhurkunde/HM_and_precession/banks/parallel/small_bank/combined_bank.hdf --injection_dir /work/rahul.dhurkunde/HM_and_precession/injections/small_injections/ --tau_crawl /work/rahul.dhurkunde/HM_and_precession/injections/tau_files/flat_tau_crawl_0.5.txt
+
 import sys, os, logging
 import argparse as ap
 import configparser
@@ -18,6 +20,7 @@ import pycbc.workflow as wf
 import pycbc.workflow.pegasus_workflow as wdax
 from pycbc.workflow import WorkflowConfigParser
 import h5py
+import os
 
 
 def to_file(path, ifo=None):
@@ -30,31 +33,63 @@ def to_file(path, ifo=None):
     fil.PFN(path, "local")
     return fil
 
+def save_indices_to_file(filename, indices):
+	with h5py.File(filename, 'w') as f:
+		for k in range(len(indices)):
+			key = "%s" %k
+			f.create_dataset(key, data=indices[k])
+	f.close()
+
+def find_template_indices(tb, tb_tau0, tau0_threshold, filename, ninj, f_min, inj_file_index):
+	sg = []
+	sg = inj.read_injections_HDF(filename, ninj, f_min)
+	indices = []
+
+	indices_save_dir = os.getcwd() + "/indices"
+	if (os.path.isdir(indices_save_dir) == False):
+		sys.exit(' Please make a "/indices in the workflow directory ')
+	else: 
+		for k in range(len(sg)):
+			temp = np.where( (tb_tau0 >= sg[k].tau0-tau0_threshold) & (tb_tau0 < sg[k].tau0+tau0_threshold) )[0]
+			indices.append(temp)
+
+		filename = indices_save_dir + "/indices_%s.hdf" %inj_file_index
+		save_indices_to_file(filename, indices)
+	return indices, filename
+
 # Command line parser
 parser = ap.ArgumentParser()
-parser.add_argument('-ff', '--ff_config', 
-		#default = "/work/rahul.dhurkunde/HM_and_precession/Config/FF_config.ini", 
-		help ='specify config file for FF computation')
-
-parser.add_argument('--psd_file', 
-		#default = "../banks/injections.hdf", 
-		help ='specify ASD file')
-
-parser.add_argument('-inj', '--injections', 
-		#default = "../injections/injections.hdf", 
-		help ='specify injection file')
-
-parser.add_argument('-tb', '--template_bank', 
-		#default = "../../banks/parallel/smallbank/combined_bank.hdf", 
-		help ='specify template bank')
-
-parser.add_argument('--tau_crawl', 
-		#default = "/work/rahul.dhurkunde/HM_and_precession/injections/flat_tau_crawl_0.5.txt", 
-		help ='specify tau crawl file')
-
+parser.add_argument('-inj', '--injection_dir',
+		required = True, 
+		help ='specify injection dir')
+parser.add_argument('--template_bank',
+		required = True, 
+		help ='specify Template bank file')
 parser.add_argument("--output_dir", 
 		default="output/", 
 		help="Path to output directory.")
+parser.add_argument('--start',
+		required = True, type = int, 
+		help ='specify starting index of workflow loop (injection file index)')
+parser.add_argument('--end',
+		required = True, type = int, 
+		help ='specify ending index of workflow loop (injection file index)')
+parser.add_argument('--HMs',
+		required = True, type = int, 
+		help ='specify 1 to include HMs or 0 to not')
+parser.add_argument('--precession',
+		required = True, type = int, 
+		help ='specify 1 to include precession or 0 to not')
+parser.add_argument('--f_min',
+		required = True, type = float, 
+		help ='specify lower frequency for the analysis')
+parser.add_argument('--ninj_per_file',
+		required = True, type = int, default = 10,
+		help ='Number of injections per injection-file ')
+parser.add_argument('--tau0_threshold',
+		required = True, type = float, 
+		help ='specify a constant tau0_threshold to find the template indices near an injection')
+
 
 pycbc.init_logging(True)
 
@@ -63,30 +98,60 @@ wf.add_workflow_command_line_group(parser)
 
 # Parser command line
 args, remaining_args = parser.parse_known_args()
+first = args.start
+last = args.end
+f_min = args.f_min
+ninj = args.ninj_per_file
+tau0_threshold = args.tau0_threshold
+
+if (args.HMs == 0):
+	injection_dir = args.injection_dir + 'aligned_injections'
+else:
+	injection_dir = args.injection_dir + 'nonaligned_injections'
+	
+if (args.HMs==0 and args.precession==0):
+	approximant_sg = 'IMRPhenomD'
+else:
+	approximant_sg = 'IMRPhenomXPHM'
 
 # create workflow and sub-workflows
+print('\n \t \t  Check before workflow is submitted', approximant_sg, injection_dir, 'ninj=', ninj, 'tau0_threshold=', tau0_threshold, '\n')
 workflow = wf.Workflow(args, "gw")
 
 # make data output and results directories
 wf.makedir(args.output_dir)
 
-#File handles for compute_FF workflow
-#confighand = to_file(args.ff_config)
-#psdfilehand = to_file(args.psd_file)
-#injhand = to_file(args.injections)
-#tbhand = to_file(args.template_bank)
-#tauhand = to_file(args.tau_crawl)
+#compute_FF
+FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos,
+					out_dir=args.output_dir)
 
+# Read complete TB only once
+start = time.time()
+tb = func.read_tb(args.template_bank, f_min)
+tb_tau0 = [x.tau0 for x in tb]
+end = time.time()
+print('Time taken to read the template bank', end-start)
+tbhand = to_file(args.template_bank)
 
-for n in range(1):
-	#compute_FF
-	FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos[n], 
-				out_dir=args.output_dir)
+for num_inj in range(first, last):
+	#Get template indices
+	inj_file_path = '%s/%s.hdf' %(injection_dir, num_inj)
+	inj_file_index = num_inj
+	indices, indices_filename = find_template_indices(tb, tb_tau0, tau0_threshold, inj_file_path, ninj, f_min, inj_file_index)
 
+	#File handles
+	injhand = to_file(inj_file_path)
+	indiceshand = to_file(indices_filename) 
+	print('Executing', inj_file_path)
+	
 	node = FF_exe.create_node()
-	#node.add_input_opt('--tau_crawl', tauhand)
-	#node.add_opt('--approximant_ind', n)
-	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
+	node.add_input_opt('--template_bank', tbhand)
+	node.add_input_opt('--injections', injhand)
+	node.add_input_opt('--indices_file', indiceshand)
+	node.add_opt('--f_min', args.f_min)
+	node.add_opt('--HMs', args.HMs)
+	node.add_opt('--approximant_sg', approximant_sg)
+	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file", tags=[str(num_inj)])
 	workflow += node
 
 # write dax

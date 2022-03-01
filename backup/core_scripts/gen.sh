@@ -1,5 +1,4 @@
 #!/bin/bash
-
 dir='/work/rahul.dhurkunde/HM_and_precession'
 
 if [ $# -eq 0 ]
@@ -8,17 +7,15 @@ then
 	exit 1
 else
 	echo "Executing in directory $1"
-	cp submit.sh $1/
+	cp submit.sh $1
 	cd $1
-	for i in {0..0}; do
-	echo $i
-		
-	mkdir $i
-	cp submit.sh $i/
-	cd $i/
+	rm gw.dax gw.ini tc.txt
 
-	$dir/scripts/FF_parser --config-files $dir/Config/workflow.ini --template_bank $dir/banks/parallel/aligned_bank/combined_bank.hdf --injections $dir/injections/50000_inj/aligned_injections/$i.hdf --tau_crawl $dir/injections/tau_files/tau_crawl_50000_aligned.txt --output_dir output/	
+	$dir/scripts/FF_parser --config-files $dir/Config/workflow.ini \
+							--injection_dir $dir/injections/100000_inj/nonaligned_injections/ \
+							--output_dir output/ \
+							--start 0 \
+							--end 300
 	./submit.sh
-	cd ../
-	done
 fi
+#							--injection_dir $dir/injections/small_injections/ \

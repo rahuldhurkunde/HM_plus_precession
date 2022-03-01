@@ -1,0 +1,14 @@
+accounting_group    = cbc.prod.test
+Universe        = vanilla
+Executable      = gen.sh 
+Arguments       = 100000_inj/nonaligned_injections $$([$(ProcId)*100]) $$([($(ProcId)+1)*100-1])  
+request_cpus    = 8
+transfer_input_files = ../Config/100000_inj_config.ini
+
+log             = log/$(ProcID).log
+output          = out/$(ProcID).out
+error           = err/$(ProcID).err
+getenv          = true
+#setenv         = true
+
+queue 100 

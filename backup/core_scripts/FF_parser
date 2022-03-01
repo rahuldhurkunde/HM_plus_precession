@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+#./FF_parser --config-files /work/rahul.dhurkunde/HM_and_precession/Config/workflow.ini --ff_config /work/rahul.dhurkunde/HM_and_precession/Config/testFF_config.ini --psd_file /work/rahul.dhurkunde/HM_and_precession/psds/ZDHP.txt --template_bank /work/rahul.dhurkunde/HM_and_precession/banks/parallel/small_bank/combined_bank.hdf --injection_dir /work/rahul.dhurkunde/HM_and_precession/injections/small_injections/ --tau_crawl /work/rahul.dhurkunde/HM_and_precession/injections/tau_files/flat_tau_crawl_0.5.txt
+
 import sys, os, logging
 import argparse as ap
 import configparser
@@ -32,25 +34,18 @@ def to_file(path, ifo=None):
 
 # Command line parser
 parser = ap.ArgumentParser()
-parser.add_argument('-ff', '--ff_config', 
-		default = "/work/rahul.dhurkunde/HM_and_precession/Config/FF_config.ini", 
-		help ='specify config file for FF computation')
-
-parser.add_argument('-inj', '--injections', 
-		#default = "../injections/injections.hdf", 
-		help ='specify injection file')
-
-parser.add_argument('-tb', '--template_bank', 
-		#default = "../../banks/parallel/smallbank/combined_bank.hdf", 
-		help ='specify template bank')
-
-parser.add_argument('--tau_crawl', 
-		#default = "/work/rahul.dhurkunde/HM_and_precession/injections/flat_tau_crawl_0.5.txt", 
-		help ='specify tau crawl file')
-
+parser.add_argument('-inj', '--injection_dir',
+		required = True, 
+		help ='specify injection dir')
 parser.add_argument("--output_dir", 
 		default="output/", 
 		help="Path to output directory.")
+parser.add_argument('--start',
+		required = True, type = int, 
+		help ='specify starting index of workflow loop (injection file index)')
+parser.add_argument('--end',
+		required = True, type = int, 
+		help ='specify ending index of workflow loop (injection file index)')
 
 pycbc.init_logging(True)
 
@@ -59,6 +54,8 @@ wf.add_workflow_command_line_group(parser)
 
 # Parser command line
 args, remaining_args = parser.parse_known_args()
+start = args.start
+end = args.end
 
 # create workflow and sub-workflows
 workflow = wf.Workflow(args, "gw")
@@ -66,24 +63,18 @@ workflow = wf.Workflow(args, "gw")
 # make data output and results directories
 wf.makedir(args.output_dir)
 
-#File handles for compute_FF workflow
-confighand = to_file(args.ff_config)
-injhand = to_file(args.injections)
-tbhand = to_file(args.template_bank)
-tauhand = to_file(args.tau_crawl)
-
-for n in range(len(workflow.ifos)):
+for num_inj in range(start, end):
 	#compute_FF
-	FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos[n], 
+	FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos, 
 				out_dir=args.output_dir)
 
+	inj_file_path = args.injection_dir + "%s.hdf" %num_inj
+	injhand = to_file(inj_file_path) 
+	print('Executing', inj_file_path)
+	
 	node = FF_exe.create_node()
-	node.add_input_opt('--ff_config', confighand)
 	node.add_input_opt('--injections', injhand)
-	node.add_input_opt('--template_bank', tbhand)
-	node.add_input_opt('--tau_crawl', tauhand)
-	#node.add_opt('--approximant_ind', n)
-	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file")
+	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file", tags=[str(num_inj)])
 	workflow += node
 
 # write dax

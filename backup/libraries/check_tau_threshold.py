@@ -9,7 +9,7 @@ def read_FFs(inj_type, nsets):
 	tau0 = np.array([])
 	recovered_tau0 = np.array([])
 	for k in range(nsets):
-		filename = "../%s/%s/output/TF2-FF-0-10.hdf" %(inj_type, k)
+		filename = "../%s/output/H1-FF_%s-0-10.hdf" %(inj_type, k)
 		f = h5py.File(filename, 'r')
 
 		FF = np.concatenate([FF, np.array(f['FF'])])
@@ -26,14 +26,14 @@ def read_tau_file(inj_type, tau_tolerance):
 
 def visual_check(tau0, recovered_tau, edges, tau_func, tau_tolerance, fig, axs, current_inj):
 	tau_diff = tau0-recovered_tau
-	ax.scatter(tau0,tau_diff, label=current_inj)
+	ax.scatter(tau0, np.abs(tau_diff), label=current_inj)
 
 	x = np.linspace(min(edges), max(edges), 100)
 	y = tau_func(x) + tau_tolerance
 	ax.set_title(current_inj)
-	ax.plot(x,y)
+	ax.plot(x,y, color='red')
 
-nsets = 500
+nsets = 10000
 tau_tolerance = 0.35
 inj_types = ['aligned', 'onlyHM', 'onlyPrecession', 'HM_prec']
 fig, axs = plt.subplots(2,2)
@@ -46,4 +46,10 @@ for row in range(2):
 			
 		edges, tau_func = read_tau_file(current_inj, tau_tolerance)
 		visual_check(tau0, recovered_tau0, edges, tau_func, tau_tolerance, fig, axs, current_inj)
+
+fig.subplots_adjust(right=0.8, hspace = 0.3)
+fig.text(0.5, 0.04, 'signal $\\tau_0$', ha='center')
+fig.text(0.04, 0.5, '$|\\tau_r - \\tau_0|$', va='center', rotation='vertical')
+fig.text(0.5, 0.95, 'Tau recovery for ZDHP', ha='center', fontsize='x-large')
+#plt.savefig('tau_recovery_zdhp.png', dpi=600)
 plt.show()
