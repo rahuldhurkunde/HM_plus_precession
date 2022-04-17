@@ -3,13 +3,14 @@
 dir='/work/rahul.dhurkunde/HM_and_precession'
 psd='ZDHP'
 f_min=15.0
-tau0_threshold=1.4
-tb_splits=10
+tau0_threshold=0.8
+nsplits=10
+nworkflow=10
 
-HMs=0
+HMs=1
 precession=0
 
-first=3000
+first=10000
 last=50000
 
 if [ $# -eq 0 ]
@@ -20,20 +21,23 @@ else
 	echo "Executing in directory $1"
 	echo "Injs from $first to $last"
 	cp submit.sh $1
+	cp remove_dax.sh $1
+	cp combine_FFs.py $1
 	cd $1
-	rm gw.dax gw.ini tc.txt
+	mkdir results
 
 	$dir/scripts/FF_parser --config-files $dir/Config/$psd/workflow.ini \
 							--template_bank $dir/banks/$psd/sorted_bank.hdf \
 							--injection_dir $dir/injections/final_injections/ \
-							--output_dir output/ \
 							--HMs $HMs \
 							--precession $precession \
 							--f_min $f_min \
-							--start $first \
-							--end $last \
+							--first $first \
+							--last $last \
 							--tau0_threshold $tau0_threshold \
-							--tb_splits $tb_splits 
-	./submit.sh
+							--nsplits $nsplits \
+							--nworkflow $nworkflow 
+	#./submit.sh
 fi
 #							--injection_dir $dir/injections/small_injections/ \
+#							--injection_dir $dir/injections/final_injections/ \

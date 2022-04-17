@@ -1,24 +1,24 @@
 #!/usr/bin/env python
+import sys, os, logging
 import argparse as ap
 import configparser
 import functions as func
 import injections as inj
 import pycbc
 from pycbc import waveform, conversions, filter, types, distributions, detector, psd
-import h5py
+import matplotlib.pyplot as plt
 import numpy as np
+import scipy
+import seaborn as sns
+import importlib
 import time
+import matplotlib.gridspec as gridspec
 import Pegasus.DAX3 as dax
 import pycbc.workflow as wf
 import pycbc.workflow.pegasus_workflow as wdax
 from pycbc.workflow import WorkflowConfigParser
-#import matplotlib.gridspec as gridspec
-#import sys, os, logging
-#import importlib
-#import scipy
-#import seaborn as sns
-#import matplotlib.pyplot as plt
-#from objsize import get_deep_size
+import h5py
+from objsize import get_deep_size
 
 def determine_values_from_parsing_config(config):
 	f_min = config.getfloat('Required', 'f_min')
@@ -123,4 +123,4 @@ FF_array, recovered_tau, sigmasqs = func.compute_FF(args.template_bank, sg, args
 #Write Matches
 write(args.output_file, FF_array, recovered_tau, sigmasqs, sg)
 
-#/work/rahul.dhurkunde/HM_and_precession/scripts/compute_FF --approximant_tb IMRPhenomD --psd_file /work/rahul.dhurkunde/HM_and_precession/psds/small.txt --sampling_freq 32 --sampling_rate 2048 --detector H1 --template_bank sorted_bank.hdf --injections 0.hdf --psd_file small.txt --indices_file indices_0.hdf --nsplits 10 --split_ind 0 --f_min 30.0 --HMs 0 --approximant_sg IMRPhenomD --output_file H1-FF_0_0-0-10.hdf
+#./compute_FF  --psd_file ../psds/aplus.txt --injections ../injections/small_injections/0.hdf --template_bank ../banks/parallel/small_bank/combined_bank.hdf  --output_file yolo.hdf --approximant_sg IMRPhenomD --approximant_tb IMRPhenomD --HMs 0 --sampling_freq 32 --sampling_rate 2048 --detector H1 --f_min 30.0 --indices_file temp/indices/indices_0.hdf

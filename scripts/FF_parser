@@ -20,42 +20,69 @@ import pycbc.workflow as wf
 import pycbc.workflow.pegasus_workflow as wdax
 from pycbc.workflow import WorkflowConfigParser
 import h5py
+import math
 import os
 
+class injs_and_tbsplits:
+	def __init__(self, inj, split_array):
+		self.inj = inj
+		self.split_array = split_array
 
 def to_file(path, ifo=None):
     """ Takes a str and returns a pycbc.workflow.pegasus_workflow.File
     instance.
     """
-    fil = wdax.File(os.path.basename(path))
-    fil.ifo = ifo
-    path = os.path.abspath(path)
-    fil.PFN(path, "local")
+    #fil = wdax.File(os.path.basename(path))
+    #fil.ifo = ifo
+    #path = os.path.abspath(path)
+    #fil.PFN(path, "local")
+    fil = pycbc.workflow.core.resolve_url_to_file(path)
     return fil
 
 def save_indices_to_file(filename, indices):
 	with h5py.File(filename, 'w') as f:
-		for k in range(len(indices)):
-			key = "%s" %k
-			f.create_dataset(key, data=indices[k])
+		f.create_dataset("indices", data=indices)
 	f.close()
 
-def find_template_indices(tb, tb_tau0, tau0_threshold, filename, ninj, f_min, inj_file_index):
+def find_nearest(array,value):
+    idx = np.searchsorted(array, value, side="left")
+    if idx > 0 and (idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx])):
+        return idx-1
+    else:
+        return idx
+
+def find_template_indices(tb, tb_tau0, tau0_threshold, filename, f_min, inj_file_index):
 	sg = []
-	sg = inj.read_injections_HDF(filename, ninj, f_min)
-	indices = []
+	sg = inj.read_injections_HDF(filename, f_min)
+	print('Inj =', inj_file_index, 'signal tau0 = ',sg[0].tau0)
 
 	indices_save_dir = os.getcwd() + "/indices"
 	if (os.path.isdir(indices_save_dir) == False):
 		sys.exit(' Please make a "/indices in the workflow directory ')
 	else: 
-		for k in range(len(sg)):
-			temp = np.where( (tb_tau0 >= sg[k].tau0-tau0_threshold) & (tb_tau0 < sg[k].tau0+tau0_threshold) )[0]
-			indices.append(temp)
+		low = sg[0].tau0 - tau0_threshold
+		low_ind = find_nearest(tb_tau0, low)
+		high = sg[0].tau0 + tau0_threshold
+		high_ind = find_nearest(tb_tau0, high) 
 
-		filename = indices_save_dir + "/indices_%s.hdf" %inj_file_index
-		save_indices_to_file(filename, indices)
-	return indices, filename
+		indices = np.array(range(low_ind, high_ind+1))
+
+	filename = indices_save_dir + "/indices_%s.hdf" %inj_file_index
+	save_indices_to_file(filename, indices)
+	return np.array(indices), filename
+
+def check_for_unfinished_jobs(first, last, nsplits):
+	unfinished_jobs = []
+	for k in range(first, last):
+		split_array = []
+		for t in range(nsplits):
+			filename = "results/H1-FF_%s_%s-0-10.hdf" %(k, t)
+			if (os.path.isfile(filename) == False):
+				split_array.append(t)
+		if split_array != []:
+			temp_obj = injs_and_tbsplits(k, split_array)
+			unfinished_jobs.append(temp_obj)
+	return unfinished_jobs
 
 # Command line parser
 parser = ap.ArgumentParser()
@@ -65,31 +92,43 @@ parser.add_argument('-inj', '--injection_dir',
 parser.add_argument('--template_bank',
 		required = True, 
 		help ='specify Template bank file')
+parser.add_argument('--psd_file',
+		required = True, 
+		help ='specify ASD file')
+
 parser.add_argument("--output_dir", 
-		default="output/", 
+		#default="output/", 
 		help="Path to output directory.")
-parser.add_argument('--start',
+parser.add_argument('--first',
 		required = True, type = int, 
 		help ='specify starting index of workflow loop (injection file index)')
-parser.add_argument('--end',
+parser.add_argument('--last',
 		required = True, type = int, 
 		help ='specify ending index of workflow loop (injection file index)')
+
 parser.add_argument('--HMs',
 		required = True, type = int, 
 		help ='specify 1 to include HMs or 0 to not')
 parser.add_argument('--precession',
 		required = True, type = int, 
 		help ='specify 1 to include precession or 0 to not')
+
 parser.add_argument('--f_min',
 		required = True, type = float, 
 		help ='specify lower frequency for the analysis')
-parser.add_argument('--ninj_per_file',
-		required = True, type = int, default = 10,
-		help ='Number of injections per injection-file ')
 parser.add_argument('--tau0_threshold',
 		required = True, type = float, 
 		help ='specify a constant tau0_threshold to find the template indices near an injection')
-
+parser.add_argument('--nsplits',
+		required = True, type = int, 
+		help ='Number of jobs per injection (will split the local tb into these many parts)')
+parser.add_argument('--nworkflow',
+		required = True, type = int, 
+		help ='Specify number of workflows')
+parser.add_argument('--cache_file',
+		help ='Cache file')
+parser.add_argument('--submit_now')
+parser.add_argument('--plan_now')
 
 pycbc.init_logging(True)
 
@@ -98,13 +137,15 @@ wf.add_workflow_command_line_group(parser)
 
 # Parser command line
 args, remaining_args = parser.parse_known_args()
-first = args.start
-last = args.end
-f_min = args.f_min
-ninj = args.ninj_per_file
-tau0_threshold = args.tau0_threshold
 
-if (args.HMs == 0):
+first = args.first
+last = args.last
+f_min = args.f_min
+tau0_threshold = args.tau0_threshold
+nsplits = args.nsplits 
+nworkflow = args.nworkflow 
+
+if (args.precession == 0):
 	injection_dir = args.injection_dir + 'aligned_injections'
 else:
 	injection_dir = args.injection_dir + 'nonaligned_injections'
@@ -114,45 +155,81 @@ if (args.HMs==0 and args.precession==0):
 else:
 	approximant_sg = 'IMRPhenomXPHM'
 
-# create workflow and sub-workflows
-print('\n \t \t  Check before workflow is submitted', approximant_sg, injection_dir, 'ninj=', ninj, 'tau0_threshold=', tau0_threshold, '\n')
-workflow = wf.Workflow(args, "gw")
+print('\n \t \t  Check before workflow is submitted', approximant_sg, injection_dir, 'tau0_threshold=', tau0_threshold, 'No. of workflows', nworkflow, 'TB splits per injection', nsplits, 'PSD', args.psd_file, '\n')
 
-# make data output and results directories
-wf.makedir(args.output_dir)
+#Checking for unifinshed jobs
+unfinished_jobs = check_for_unfinished_jobs(first, last, nsplits)
+injection_indices = [x.inj for x in unfinished_jobs]
 
-#compute_FF
-FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos,
-					out_dir=args.output_dir)
 
-# Read complete TB only once
+# Read and transfer TB only once
 start = time.time()
 tb = func.read_tb(args.template_bank, f_min)
-tb_tau0 = [x.tau0 for x in tb]
+tb_tau0 = np.array([x.tau0 for x in tb])
 end = time.time()
 print('Time taken to read the template bank', end-start)
-tbhand = to_file(args.template_bank)
 
-for num_inj in range(first, last):
-	#Get template indices
-	inj_file_path = '%s/%s.hdf' %(injection_dir, num_inj)
-	inj_file_index = num_inj
-	indices, indices_filename = find_template_indices(tb, tb_tau0, tau0_threshold, inj_file_path, ninj, f_min, inj_file_index)
+main_dir = os.getcwd()
 
-	#File handles
-	injhand = to_file(inj_file_path)
-	indiceshand = to_file(indices_filename) 
-	print('Executing', inj_file_path)
+
+for wf_ind in range(nworkflow): 
+	#Create workflow 
+	wfname = "gw_%s" %wf_ind
+	workflow = wf.Workflow(args, wfname)
+	existing_run = False
+
+	#Create working(out) directory and start working in that dir
+	working_dir = "%s/part_%s"%(main_dir, wf_ind)
+	if (os.path.isdir(working_dir)==True):
+		print("======== Existing run detected =======")
+	else:
+		wf.makedir(working_dir)
+		wf.makedir("%s/indices"%working_dir)
+	os.chdir(working_dir)
+	workflow.out_dir = working_dir	
+	print("Changing directory to", working_dir, 'Out_dir', workflow.out_dir)
 	
-	node = FF_exe.create_node()
-	node.add_input_opt('--template_bank', tbhand)
-	node.add_input_opt('--injections', injhand)
-	node.add_input_opt('--indices_file', indiceshand)
-	node.add_opt('--f_min', args.f_min)
-	node.add_opt('--HMs', args.HMs)
-	node.add_opt('--approximant_sg', approximant_sg)
-	FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file", tags=[str(num_inj)])
-	workflow += node
+	#Executable -- compute_FF
+	FF_exe = wf.Executable(workflow.cp, "FF", ifos=workflow.ifos, out_dir="../results/")
+	tbhand = to_file(args.template_bank)
+	psdhand = to_file(args.psd_file)
 
-# write dax
-workflow.save('gw.dax')
+	#Injections for the current workflow
+	jobs_to_exe = np.array_split(unfinished_jobs, nworkflow)[wf_ind] 
+	inj_to_exe = [x.inj for x in jobs_to_exe]
+	np.savetxt('injs_executing.txt', inj_to_exe)	
+
+	for job in jobs_to_exe:
+		#Get template indices
+		ind_start = time.time()
+		num_inj = job.inj
+		inj_file_path = '%s/%s.hdf' %(injection_dir, num_inj)
+		indices, indices_filename = find_template_indices(tb, tb_tau0, tau0_threshold, inj_file_path, f_min, num_inj)
+		ind_end = time.time()
+
+		#File handles
+		injhand = to_file(inj_file_path)
+		indiceshand = to_file(indices_filename) 
+		print('Executing', inj_file_path, 'Templates around = ', len(indices), 'Time taken for indices comp', ind_end-ind_start)
+
+		#TBsplits for the current injection
+		split_array = job.split_array     #num_inj should be index
+		for split_ind in split_array:
+			template_indices = np.array_split(indices, nsplits)[split_ind]
+			node = FF_exe.create_node()
+			node.add_input_opt('--template_bank', tbhand)
+			node.add_input_opt('--injections', injhand)
+			node.add_input_opt('--psd_file', psdhand)
+			node.add_input_opt('--indices_file', indiceshand)
+			node.add_opt('--nsplits', nsplits)
+			node.add_opt('--split_ind', split_ind)
+			node.add_opt('--f_min', args.f_min)
+			node.add_opt('--HMs', args.HMs)
+			node.add_opt('--approximant_sg', approximant_sg)
+			filetag = "%s_%s" %(num_inj, split_ind)
+			FF_file = node.new_output_file_opt(workflow.analysis_time, ".hdf", "--output_file", tags=[filetag])
+			workflow += node
+
+	#write dax
+	daxfile = "gw_%s.dax" %wf_ind
+	workflow.save(daxfile)

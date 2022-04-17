@@ -66,36 +66,29 @@ def write_injections_HDF(sg, filename):
             f.create_dataset("dec", data=dec)
     f.close()
     
-def read_injections_HDF(filename, nsignal, f_min):
+def read_injections_HDF(filename, f_min):
     hf = h5py.File(filename, 'r')
     sg = []
-    for i in range(nsignal):
-        m1 = hf['mass1'][i]
-        m2 = hf['mass2'][i]
-        tau0 = conversions.pycbc.conversions.tau0_from_mass1_mass2(m1, m2, f_min)
-        tau3 = conversions.pycbc.conversions.tau3_from_mass1_mass2(m1, m2, f_min)
-        temp_obj = sg_params(m1, 
-                            m2, 
-                            hf['spin1x'][i], 
-                            hf['spin1y'][i], 
-                            hf['spin1z'][i],
-                            hf['spin2x'][i], 
-                            hf['spin2y'][i], 
-                            hf['spin2z'][i],
-                            tau0, 
-                            tau3, 
-                            hf['distance'][i], 
-                            hf['inclination'][i], 
-                            hf['polarization'][i], 
-                            hf['ra'][i], 
-                            hf['dec'][i])
-        sg.append(temp_obj)
+    m1 = hf['mass1'][0]
+    m2 = hf['mass2'][0]
+    tau0 = conversions.pycbc.conversions.tau0_from_mass1_mass2(m1, m2, f_min)
+    tau3 = conversions.pycbc.conversions.tau3_from_mass1_mass2(m1, m2, f_min)
+    temp_obj = sg_params(m1, 
+                        m2, 
+                        hf['spin1x'][0], 
+                        hf['spin1y'][0], 
+                        hf['spin1z'][0],
+                        hf['spin2x'][0], 
+                        hf['spin2y'][0], 
+                        hf['spin2z'][0],
+                        tau0, 
+                        tau3, 
+                        hf['distance'][0], 
+                        hf['inclination'][0], 
+                        hf['polarization'][0], 
+                        hf['ra'][0], 
+                        hf['dec'][0])
+    sg.append(temp_obj)
     return sg
 
-def generate_injections(delta_f, delta_t, f_min):
-    tb = func.read_tb("banks/vanilla_BBHbank", f_min)
-    nsignal = 1000
-    sg = func.random_params_from_tb(tb, f_min, nsignal)
-    filename = 'random_injections.hdf5'
-    #write_injections_HDF(sg, filename)
 

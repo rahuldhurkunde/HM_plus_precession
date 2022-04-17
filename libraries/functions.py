@@ -164,6 +164,12 @@ def get_nearby_templates(tb_file, indices, f_min):
         tb.append(temp_obj)
     return tb
 
+def get_template_indices(indices_file, tbsplit_ind, tb_splits):
+    hf = h5py.File(indices_file, 'r')
+    indices = hf["indices"]
+    template_indices = np.array_split(indices, tb_splits)[tbsplit_ind]
+    return template_indices
+
 def compute_match(tb, sg, PSD, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs):
     if HMs == True:
         sp, sc = generate_signal(sg, delta_f, f_min, approximant_sg)
@@ -179,38 +185,34 @@ def compute_match(tb, sg, PSD, delta_f, f_min, detect, approximant_tb, approxima
         hp, hc = generate_template(tb[i], delta_f, f_min, approximant_tb)
         hp.resize(len(PSD))
         
-        sigmasq_sg = filter.matchedfilter.sigmasq(s_f, psd=PSD, low_frequency_cutoff=f_min)
         temp_match = filter.match(hp, s_f, psd = PSD, low_frequency_cutoff = f_min)[0]
         matches.append(temp_match)
-        #if (i%100==0):
-            #print(i, temp_match, len(matches))
+    sigmasq_sg = filter.matchedfilter.sigmasq(s_f, psd=PSD, low_frequency_cutoff=f_min)   
     return matches, sigmasq_sg   
 
-def compute_FF(tb_file, sg, indices_file, PSD, nsignal, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs):
+
+def compute_FF(tb_file, sg, indices_file, PSD, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs, tbsplit_ind, tb_splits):
     FF_array = []
     recovered_tau = []
     template_indices = []
     sigmasqs = []
 
-    for n in range(nsignal):
-        start = time.time()
-        hf = h5py.File(indices_file, 'r')
-        key = '%s' %n
-        template_indices = hf[key]
-        tb = get_nearby_templates(tb_file, template_indices, f_min)
-        print( 'No.templates around', len(template_indices), 'Size of tb', get_deep_size(tb)/10**9, 'GBs')
+    start = time.time()
+    template_indices = get_template_indices(indices_file, tbsplit_ind, tb_splits)
+    tb_nearby = get_nearby_templates(tb_file, template_indices, f_min)
+    print( 'No.templates around', len(template_indices))
         
-        if (len(template_indices) == 0):
-            sys.exit(' ""Injection outside the parameter region ""')
-        else:
-            match, sigmasq_sg = compute_match(tb, sg[n], PSD, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs)
-            best_templ_ind = np.argmax(match)
+    if (len(template_indices) == 0):
+           sys.exit(' ""Injection outside the parameter region ""')
+    else:
+        match, sigmasq_sg = compute_match(tb_nearby, sg[0], PSD, delta_f, f_min, detect, approximant_tb, approximant_sg, HMs)
+        best_templ_ind = np.argmax(match)
             
-            sigmasqs.append(sigmasq_sg)
-            FF_array.append(match[best_templ_ind])
-            recovered_tau.append(tb[best_templ_ind].tau0)
-        end = time.time()
-        print('Inj --', n, 'took', end-start, 'secs')
+        sigmasqs.append(sigmasq_sg)
+        FF_array.append(match[best_templ_ind])
+        recovered_tau.append(tb_nearby[best_templ_ind].tau0)
+    end = time.time()
+    print(tbsplit_ind, 'Local bank', 'with templates=',len(template_indices), 'took=', end-start, 'secs')
     return np.array(FF_array), np.array(recovered_tau), np.array(sigmasqs)
 
 

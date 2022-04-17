@@ -20,50 +20,54 @@ from pycbc.workflow import WorkflowConfigParser
 import h5py
 from objsize import get_deep_size
 
-def determine_values_from_parsing_config(config, approximant_ind):
+def determine_values_from_parsing_config(config):
 	f_min = config.getfloat('Required', 'f_min')
 	delta_f = 1.0/(config.getfloat('Required', 'sampling_freq'))
 	delta_t = 1.0/(config.getfloat('Required', 'sampling_rate'))
 	detectorname = config['Required']['detector']
 	tau_tolerance = config.getfloat('Tau_threshold', 'tau_tolerance')
-	#ninjections = config.getint('Required', 'ninjections')
-	#approximant_tb = config.get('Required', 'approximant_tb').split(' ')[approximant_ind]
-	#approximant_sg = config.get('Required', 'approximant_sg')
-	#HMs = config.getboolean('Required', 'HMs')
 	return f_min, delta_f, delta_t, detectorname, tau_tolerance
 
-def write(filename, FF_array, recovered_tau, sigmasqs, sg):
+def write(filename, FF_array, recovered_tau, sigmasqs, sg, tbsplit_ind):
 	m1 = np.array([x.m1 for x in sg])
 	m2 = np.array([x.m2 for x in sg])
 	tau0 = np.array([x.tau0 for x in sg])
 	tau3 = np.array([x.tau3 for x in sg])
 
-	with h5py.File(filename, 'w') as f:
-			f.create_dataset("FF", data=FF_array)
-			f.create_dataset("rec_tau", data=recovered_tau)
-			f.create_dataset("mass1", data=m1)
-			f.create_dataset("mass2", data=m2)
-			f.create_dataset("tau0", data=tau0)
-			f.create_dataset("tau3", data=tau3)
-			f.create_dataset("sigmasqs", data=sigmasqs)
-	f.close()
+	if (tbsplit_ind == 0):
+		with h5py.File(filename, 'w') as f:
+				f.create_dataset("FF", data=FF_array)
+				f.create_dataset("rec_tau", data=recovered_tau)
+				f.create_dataset("mass1", data=m1)
+				f.create_dataset("mass2", data=m2)
+				f.create_dataset("tau0", data=tau0)
+				f.create_dataset("tau3", data=tau3)
+				f.create_dataset("sigmasqs", data=sigmasqs)
+		f.close()
+	else:
+		hf = h5py.File(filename, 'r+')
+		prev_FF = hf['FF'][0]
+		if ( FF_array[0] > prev_FF):
+			hf['FF'][0] = FF_array
+			hf['rec_tau'][0] = recovered_tau
+			hf['mass1'][0] = m1
+			hf['mass2'][0] = m2
+			hf['tau0'][0] = tau0
+			hf['sigmasqs'] = sigmasqs
+			hf.close()
+		else:
+			hf.close()
+
 
 # Command line parser
 parser = ap.ArgumentParser()
-parser.add_argument('--ff_config', 
-		required = True,
-		help ='specify FF-config file')
 parser.add_argument('--psd_file', 
 		required = True,
 		help ='specify ASD file')
-
-
 parser.add_argument('--injections', 
 		required = True,
 		help ='specify injection file')
-parser.add_argument('--ninjections', 
-		required = True, type=int,
-		help ='specify number of injections')
+
 parser.add_argument('--approximant_sg', 
 		required = True,
 		help ='specify approximant used for signals')
@@ -71,58 +75,66 @@ parser.add_argument('--HMs',
 		required = True, type=int,
 		help ='specify 1(0) to generate signals with(without) HMs')
 
-
 parser.add_argument('-tb', '--template_bank', 
+		required=True,
 		help ='specify template bank')
 parser.add_argument('--approximant_tb', 
 		required = True,
 		help ='specify approximant used for templates')
+parser.add_argument('--indices_file', 
+		help ='specify file containing indices of templates around the injections')
+parser.add_argument('--tbsplit_ind', 
+		required=True, type=int,
+		help ='Index of the template sub-region to compute matches -- ranging from [0,9] ')
+parser.add_argument('--tb_splits', 
+		required=True, type=int, default=10,
+		help ='Number of splits for the local template region')
 
-parser.add_argument('--tau_crawl',
-		help ='specify tau crawl file')
-parser.add_argument('--approximant_ind',
-		default = 0, type=int, 
-		help ='specify the index from the list of approximants')
+parser.add_argument('--f_min', 
+		required = True, type=float,
+		help ='Specify lower frequency for the analysis')
+parser.add_argument('--sampling_freq', 
+		required = True, type=float,
+		help ='Specify sampling frequency')
+parser.add_argument('--sampling_rate', 
+		required = True, type=float, default=2048,
+		help ='Specify sampling rate')
+parser.add_argument('--detector', 
+		help ='Specify detector name', required=True, default='H1')
 parser.add_argument('--output_file', 
 		help ='specify output file', required=True)
 
-args, remaining_args = parser.parse_known_args()
-if args.ff_config:
-	config = configparser.ConfigParser()
-	config.read([args.ff_config])
 
-f_min, delta_f, delta_t, detectorname, tau_tolerance = determine_values_from_parsing_config(config, args.approximant_ind)
+
+args, remaining_args = parser.parse_known_args()
+f_min = args.f_min
+delta_f = 1.0/args.sampling_freq
+delta_t = 1.0/args.sampling_rate
+detectorname = args.detector
+tbsplit_ind = args.tbsplit_ind
+tb_splits = args.tb_splits
+
+#f_min, delta_f, delta_t, detectorname = determine_values_from_parsing_config(config)
+
 if (args.HMs == 1):
 	HMs = True
 else:
 	HMs = False
 
-print('\t \t \t', 'f_min = ', f_min, 'sampling freq =', 1.0/delta_f, 'psd-file', args.psd_file)
+print('\t \t', 'Injection_file', args.injections, 'tbsplit_ind', tbsplit_ind)
 
-#Read template bank
-start = time.time()
-tb = func.read_tb(args.template_bank, f_min)
-end = time.time()
-print('Time taken to read the template bank', end-start, 'HMs = ', HMs, type(HMs))
-print('Size of template bank object', get_deep_size(tb)/10**9, 'GB')
-
-#Read injections
-sg = inj.read_injections_HDF(args.injections, args.ninjections, f_min)
-
-#Tau_threshold function
-tau_bin_edges = np.loadtxt(args.tau_crawl)[:,0]
-tau_bin_statistic = np.loadtxt(args.tau_crawl)[:,1]
-tau_func = func.fit_tau_envelope(tau_bin_edges, tau_bin_statistic, tau_tolerance)
+#Read injection
+sg = inj.read_injections_HDF(args.injections, f_min)
 
 #Read PSD
 length = int(1.0/(delta_f*delta_t)/2 + 1)
-psd = pycbc.psd.read.from_txt(args.psd_file, length, delta_f, f_min, is_asd_file=True)
+PSD = pycbc.psd.read.from_txt(args.psd_file, length, delta_f, f_min, is_asd_file=True)
 detect = detector.Detector(detectorname)
 
 #Compute Matches
-FF_array, recovered_tau, sigmasqs = func.compute_FF(tb, sg, tau_func, tau_tolerance, psd, args.ninjections, detect, delta_f, f_min, args.approximant_tb, args.approximant_sg, HMs)
+FF_array, recovered_tau, sigmasqs = func.compute_FF(args.template_bank, sg, args.indices_file, PSD, detect, delta_f, f_min, args.approximant_tb, args.approximant_sg, HMs, tbsplit_ind, tb_splits)
 
 #Write Matches
-write(args.output_file, FF_array, recovered_tau, sigmasqs, sg)
+write(args.output_file, FF_array, recovered_tau, sigmasqs, sg, tbsplit_ind)
 
-#./compute_FF --ff_config ../Config/FF_config.ini --psd_file ../psds/aplus.txt --injections ../injections/small_injections/0.hdf --template_bank ../banks/aplus/combined_bank.hdf --tau_crawl ../injections/tau_files/flat_tau_crawl_0.5.txt --output_file yolo.hdf --approximant_sg IMRPhenomD --approximant_tb IMRPhenomD --HMs 0 --ninjections 10
+#./compute_FF  --psd_file ../psds/aplus.txt --injections ../injections/small_injections/0.hdf --template_bank ../banks/parallel/small_bank/combined_bank.hdf  --output_file yolo.hdf --approximant_sg IMRPhenomD --approximant_tb IMRPhenomD --HMs 0 --sampling_freq 32 --sampling_rate 2048 --detector H1 --f_min 30.0 --indices_file temp/indices/indices_0.hdf
