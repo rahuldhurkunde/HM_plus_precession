@@ -8,7 +8,7 @@ nsplits=10
 nworkflow=10
 
 HMs=0
-precession=0
+precession=1
 
 first=0
 last=50000
