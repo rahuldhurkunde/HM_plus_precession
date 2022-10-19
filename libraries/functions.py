@@ -8,7 +8,7 @@ import time
 import scipy
 import multiprocessing
 import sys
-from objsize import get_deep_size
+#from objsize import get_deep_size
 
 class tb_params:
         def __init__(self, m1, m2, s1z, s2z, tau0, tau3):
@@ -64,6 +64,45 @@ def read_tb(filename, f_min):
         tb.append(temp_obj)
     return tb   
 
+def read_injections(filename, f_min):    
+    tf = h5py.File(filename, 'r')
+    print('Injections --', filename)
+    mass1 = tf['mass1']
+    mass2 = tf['mass2']
+    spin1x = tf['spin1x']
+    spin1y = tf['spin1y']
+    spin1z = tf['spin1z']
+    spin2x = tf['spin2x']
+    spin2y = tf['spin2y']
+    spin2z = tf['spin2z']
+    tau0 = tf['tau0']
+    tau3 = tf['tau3']
+    inclination = tf['inclination']
+    polarization = tf['polarization']
+    distance = tf['distance']
+    ra = tf['ra']
+    dec = tf['dec']
+    
+    sg = []
+    for i in range(len(mass1)):
+        temp_obj = sg_params(mass1[i], 
+                        mass2[i], 
+                        spin1x[i], 
+                        spin1y[i], 
+                        spin1z[i],
+                        spin2x[i], 
+                        spin2y[i], 
+                        spin2z[i],
+                        tau0[i], 
+                        tau3[i], 
+                        distance[i], 
+                        inclination[i], 
+                        polarization[i], 
+                        ra[i], 
+                        dec[i])
+        sg.append(temp_obj)
+    return sg 
+
 
 def generate_template(tb, delta_f, f_min, approximant_tb):
     hp, hc = waveform.get_fd_waveform(approximant = approximant_tb,
@@ -106,11 +145,15 @@ def check_tau0_for_template_generation(tb, signal, tau0_threshold):
             temp_indices.append(i)
     return temp_indices
 
-def real_imag_dot_product(sg, PSD, f_min, delta_f, approximant, nsignal):
+def real_imag_dot_product(sg, PSD, f_min, delta_f, approximant, nsignal, HMs):
 	dot_products = []
 	for n in range(len(sg)):
-		hp, hc = generate_signal(sg[n], delta_f, f_min, approximant)
-		hp.resize(len(PSD))
+		if HMs == True:
+			hp, hc = generate_signal(sg[n], delta_f, f_min, approximant_sg)
+		else:
+			#print('Only using dominant modes', modes) 
+			modes = [[2,2], [2,-2]]
+			hp, hc = generate_signal(sg[n], delta_f, f_min, approximant_sg, modes=modes)  	
 		hc.resize(len(PSD))
 		temp = filter.matchedfilter.overlap_cplx(hp, hc, psd = PSD, low_frequency_cutoff = f_min, normalized=True)
 		dot_products.append(np.abs(temp.imag))
@@ -189,7 +232,6 @@ def compute_match(tb, sg, PSD, delta_f, f_min, detect, approximant_tb, approxima
         matches.append(temp_match)
     sigmasq_sg = filter.matchedfilter.sigmasq(s_f, psd=PSD, low_frequency_cutoff=f_min)   
     return matches, sigmasq_sg   
-
 
 def compute_FF(tb_file, sg, indices_file, PSD, detect, delta_f, f_min, approximant_tb, approximant_sg, HMs, tbsplit_ind, tb_splits):
     FF_array = []

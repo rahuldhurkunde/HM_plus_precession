@@ -12,13 +12,6 @@ import Pegasus.DAX3 as dax
 import pycbc.workflow as wf
 import pycbc.workflow.pegasus_workflow as wdax
 from pycbc.workflow import WorkflowConfigParser
-#import matplotlib.gridspec as gridspec
-#import sys, os, logging
-#import importlib
-#import scipy
-#import seaborn as sns
-#import matplotlib.pyplot as plt
-#from objsize import get_deep_size
 
 def determine_values_from_parsing_config(config):
 	f_min = config.getfloat('Required', 'f_min')
