@@ -3,10 +3,7 @@ message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Dhurkunde"
   given-names: "Rahul"
-  orcid: "https://orcid.org/0000-0000-0000-0000"
-- family-names: "Nitz"
-  given-names: "Alexander H."
-  orcid: "https://orcid.org/0000-0000-0000-0000"
+  orcid: "https://orcid.org/0000-0002-5077-8916"
 title: "Data Release: Sensitivity of spin-aligned template banks to NSBH systems"
 date-released: 2022-11-14
 version: 1.0.0
