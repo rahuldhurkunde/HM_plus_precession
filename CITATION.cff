@@ -9,4 +9,5 @@ authors:
   orcid: "https://orcid.org/0000-0000-0000-0000"
 title: "Data Release: Sensitivity of spin-aligned template banks to NSBH systems"
 date-released: 2022-11-14
+version: 1.0.0
 url: "https://github.com/rahuldhurkunde/HM_plus_precession"
