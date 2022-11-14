@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Dhurkunde"
+  given-names: "Rahul"
+  orcid: "https://orcid.org/0000-0000-0000-0000"
+- family-names: "Nitz"
+  given-names: "Alexander H."
+  orcid: "https://orcid.org/0000-0000-0000-0000"
+title: "Data Release: Sensitivity of spin-aligned template banks to NSBH systems"
+date-released: 2022-11-14
+url: "https://github.com/rahuldhurkunde/HM_plus_precession"
